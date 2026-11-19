@@ -1,0 +1,29 @@
+/* LLM Engineering palette: highlighter tones, like a tokenizer view */
+:root{--w0s:#5B6573;--w1:#3A6FD8;--w2:#8A4FD0;--w3:#D2551F;--w4:#1E9B8A;--w5:#C2337A;--w6:#B8860B;--w7:#D23A3A;--w8:#2E8B3D;--w9:#222B36}
+[data-theme="dark"]{--w0s:#8E99A6;--w1:#6F98EA;--w2:#B08AE8;--w3:#EB8452;--w4:#3CC3AF;--w5:#E56BA6;--w6:#D9AA3A;--w7:#EE6A6A;--w8:#55BE63;--w9:#C8D1DA}
+
+/* hero: the course as a streamed completion */
+.token-stream{margin:1.6rem 0 1.2rem;padding:1.3rem 1.4rem 1.1rem;background:var(--surface);border:1px solid var(--rule);border-radius:8px;max-width:52rem}
+.ts-role{display:block;font-family:var(--mono);font-size:.74rem;color:var(--muted);margin-bottom:.35rem}
+.ts-prompt{font-family:var(--mono);font-size:1rem;margin:0 0 1.1rem;padding-bottom:1rem;border-bottom:1px dashed var(--rule)}
+.ts-out{margin:0;display:flex;flex-wrap:wrap;gap:.5rem .4rem;align-items:center}
+.ts-out .ts-role{flex-basis:100%;margin-bottom:.1rem}
+.tok{position:relative;display:inline-flex;align-items:baseline;gap:.45rem;padding:.42rem .7rem .42rem .55rem;border-radius:5px;text-decoration:none;color:var(--ink);
+  font-family:var(--mono);font-size:1.02rem;line-height:1.3;background:color-mix(in srgb,var(--tc) 17%,var(--paper));border:1.5px solid color-mix(in srgb,var(--tc) 55%,transparent);
+  transition:transform .18s,background .18s,box-shadow .18s}
+.tok small{font-size:.68rem;color:var(--tc);font-weight:700}
+.tok .done{display:none;font-style:normal;font-size:.75rem;color:var(--tc)}
+.tok.is-done .done{display:inline}
+.tok:hover,.tok:focus-visible{transform:translateY(-2px);background:color-mix(in srgb,var(--tc) 28%,var(--paper));box-shadow:0 3px 0 color-mix(in srgb,var(--tc) 60%,transparent)}
+.caret{display:inline-block;width:.6rem;height:1.25rem;background:var(--ink);border-radius:1px;animation:blink 1s steps(1) infinite;vertical-align:middle}
+@keyframes blink{50%{opacity:0}}
+@keyframes tokIn{from{opacity:0;transform:translateY(4px) scale(.96)}to{opacity:1;transform:none}}
+.js .token-stream:not(.streamed) .tok{opacity:0}
+.js .token-stream.streaming .tok{animation:tokIn .28s ease-out both;animation-delay:calc(var(--i) * 230ms + 250ms)}
+@media (prefers-reduced-motion: reduce){.js .token-stream .tok{opacity:1!important}.caret{animation:none}}
+@media (max-width:640px){.token-stream{padding:1rem .9rem}.tok{font-size:.95rem}}
+
+/* notebook map */
+.nbmap td:first-child{white-space:nowrap}
+.nbmap code{white-space:nowrap}
+.cost{font-family:var(--display);font-size:.9rem;color:var(--muted)}

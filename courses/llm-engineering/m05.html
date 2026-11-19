@@ -1,0 +1,117 @@
+<section class="module" id="m4" data-title="Week 4: Choosing models" data-wire="var(--w4)" data-group="Foundations">
+<div class="wire-band" style="--wire:var(--w4)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 4 · Module 4 of 9 · <code>week4/</code></p>
+  <h1>Choosing the right model: a code-generation race</h1>
+  <p class="lede">How do you pick a model when there are hundreds? Week 4's answer is to stop reading marketing and test models on your own task with a measurable outcome. The task: convert Python into fast C++ or Rust, compile it, run it, check the output matches, and time it.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w4)">
+  <h2>By the end of this week you can</h2>
+  <ul>
+    <li>Narrow the field of models using cost, context size, licensing and public benchmarks.</li>
+    <li>Build a small benchmark of your own with an objective pass/fail and a score.</li>
+    <li>Prompt a model to generate code that compiles and produces identical output.</li>
+    <li>Explain why running generated code needs care, and how to contain it.</li>
+  </ul>
+</div>
+
+<h2>Notebook map</h2>
+<p>The week starts with lecture days on model selection; the labs begin at Day 3.</p>
+<div class="tbl nbmap"><table>
+<thead><tr><th>File</th><th>What happens</th><th>Look for</th></tr></thead>
+<tbody>
+<tr><td><code>day3.ipynb</code></td><td>Ask a model for the right compiler commands for your machine (via <code>system_info.py</code>), then port a π-approximation from Python to C++ with several frontier models and compare speedups</td><td>The system prompt that demands identical output and only code</td></tr>
+<tr><td><code>day4.ipynb</code></td><td>Wrap the converter in a Gradio app; try open-source coder models alongside frontier ones</td><td>Which models fail to produce code that compiles</td></tr>
+<tr><td><code>day5.ipynb</code></td><td>Add Rust as a target and a harder benchmark program; race a longer list of models</td><td>How results change when the problem gets harder</td></tr>
+</tbody></table></div>
+<p class="cost">Cost: cents to a dollar, depending on how many frontier models you race with high reasoning effort. Running the C++ or Rust is optional; reading the results works too.</p>
+
+<h2>Narrowing the field</h2>
+<p>Before benchmarking, rule models in or out on the basics:</p>
+<div class="tbl"><table>
+<thead><tr><th>Question</th><th>Why it matters</th></tr></thead>
+<tbody>
+<tr><td>Open or closed? What license?</td><td>Whether you can self-host, fine-tune, and use it commercially</td></tr>
+<tr><td>Size and hardware</td><td>Whether it fits on your GPU or needs a hosted endpoint</td></tr>
+<tr><td>Context window</td><td>Whether your input (code, documents, history) fits</td></tr>
+<tr><td>Price and speed</td><td>Cost per million input and output tokens; latency and throughput</td></tr>
+<tr><td>Knowledge cutoff</td><td>Whether it knows recent libraries and APIs</td></tr>
+<tr><td>Reasoning support</td><td>Whether you can trade more thinking for better answers</td></tr>
+</tbody></table></div>
+<p>Public benchmarks and leaderboards help narrow further, with caveats: scores can be gamed or leak into training data, and a benchmark rarely matches your task exactly. Use them to make a shortlist, not a decision.</p>
+
+<h2>Your own benchmark beats anyone else's</h2>
+<p>The code-conversion task is a good benchmark because the outcome is objective. The C++ either compiles or it doesn't; its output either matches Python's or it doesn't; and its runtime is a number. That's the same principle you'll use for RAG in Week 5 and pricing in Week 6: <mark>define success as something you can measure, then compare models on it</mark>.</p>
+<figure class="diagram">
+<svg viewBox="0 0 680 190" role="img" aria-label="The benchmark loop: Python source goes to a model, the model writes C++, the harness compiles and runs it, then compares the output and time with the Python run.">
+  <rect x="10" y="60" width="110" height="56" rx="6" class="box"/><text x="65" y="85" text-anchor="middle" style="font-size:13px;font-weight:600">Python</text><text x="65" y="103" text-anchor="middle" class="muted" style="font-size:11px">run, time it</text>
+  <rect x="150" y="60" width="110" height="56" rx="6" fill="var(--ink)"/><text x="205" y="93" text-anchor="middle" style="fill:var(--paper);font-size:13px;font-weight:600">Model</text>
+  <rect x="290" y="60" width="110" height="56" rx="6" class="box"/><text x="345" y="85" text-anchor="middle" style="font-size:13px;font-weight:600">main.cpp</text><text x="345" y="103" text-anchor="middle" class="muted" style="font-size:11px">generated</text>
+  <rect x="430" y="60" width="110" height="56" rx="6" class="box"/><text x="485" y="85" text-anchor="middle" style="font-size:13px;font-weight:600">Compile + run</text><text x="485" y="103" text-anchor="middle" class="muted" style="font-size:11px">subprocess</text>
+  <rect x="570" y="60" width="100" height="56" rx="6" fill="color-mix(in srgb,var(--w4) 20%,var(--paper))" stroke="var(--w4)" stroke-width="2"/><text x="620" y="85" text-anchor="middle" style="font-size:13px;font-weight:600">Score</text><text x="620" y="103" text-anchor="middle" class="muted" style="font-size:11px">same output? ×faster</text>
+  <path d="M120 88 H150 M260 88 H290 M400 88 H430 M540 88 H570" class="ln" marker-end="url(#arr4w)"/>
+  <path d="M65 116 C65 165 620 165 620 116" class="ln" style="stroke:var(--w4);stroke-width:2" marker-end="url(#arr4w)"/>
+  <text x="340" y="178" text-anchor="middle" class="muted" style="font-size:11px">compare against the Python result</text>
+  <defs><marker id="arr4w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+</svg>
+<figcaption>A benchmark with an objective answer: correctness first, then speed.</figcaption>
+</figure>
+
+<h2>Prompting for code that compiles</h2>
+<p>The system prompt in the notebooks is strict for good reasons. It asks for <em>only</em> code (so the reply can be written straight to a file), output identical to the Python version, and attention to details that commonly break ports, such as integer overflow. The user prompt includes the Python source, and on Day 3 a separate first call asks the model for the right compile and run commands for your specific machine, generated from a report of your OS, CPU and compilers.</p>
+<figure class="code"><figcaption>The porting step</figcaption>
+<pre><code>SYSTEM = (<span class="s">"Convert Python into high-performance C++. Respond only with C++ code, no explanation. "</span>
+          <span class="s">"The program must print exactly the same output as the Python, and run as fast as possible. "</span>
+          <span class="s">"Use 64-bit integer types where values can overflow."</span>)
+
+<span class="k">def</span> <span class="f">port</span>(client, model, python: str) -> str:
+    r = client.chat.completions.create(model=model, messages=[
+        {<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: SYSTEM},
+        {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Port this program:\n\n"</span> + python}])
+    code = r.choices[<span class="s">0</span>].message.content
+    <span class="k">return</span> code.replace(<span class="s">"```cpp"</span>, <span class="s">""</span>).replace(<span class="s">"```"</span>, <span class="s">""</span>)   <span class="c"># models add fences anyway</span></code></pre></figure>
+<p>Then compile with optimization flags, run, and compare. The notebooks print each model's speedup over Python, which run into the hundreds or thousands of times faster for the frontier models. On the harder Day 5 problem, the author's notes report the open-weights GPT-OSS 120B producing a program about 110,000 times faster than the Python; on Day 4, a small local coder model (Qwen 2.5 Coder) failed outright. Your numbers will differ by machine and model version, which is the point: run it yourself.</p>
+
+<div class="note pitfall"><h4>You are running code a model wrote</h4>
+<p>These labs <code>exec()</code> Python and compile and run generated C++ directly on your computer. For a known toy program that's acceptable. For anything else it isn't: generated code can delete files, hang, or exhaust memory, and if the input came from someone else, it can be steered to do so. Run generated code in a container or a VM with no network and no access to your files, with a timeout. <a href="../harness-engineering/#m8">Harness Engineering Module 8</a> covers how.</p></div>
+
+<h2>What to take from the results</h2>
+<ul>
+  <li><strong>Correctness before speed.</strong> A fast program with different output scores zero.</li>
+  <li><strong>Harder problems separate models.</strong> On the easy benchmark most frontier models do well; the harder one reorders the field.</li>
+  <li><strong>Reasoning effort matters for code.</strong> The notebooks turn it up for models that support it.</li>
+  <li><strong>Open models are viable for some jobs.</strong> Some open-weights models compete with closed ones on this task; small local ones often don't.</li>
+</ul>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Shortlist on license, size, context, price, cutoff and reasoning; use leaderboards to narrow, not to decide.</li>
+  <li>Build a benchmark with an objective score on your actual task, and compare models on it.</li>
+  <li>Prompt for exactly the output format you need, and still clean up what comes back.</li>
+  <li>Run generated code only in an isolated, time-limited environment.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">A model's C++ runs 900× faster than the Python but prints a different number. How should it score?</p>
+<ol><li><button>Highest; speed was the goal</button></li><li><button>Partial credit for speed</button></li><li><button>Zero; the output must match before speed counts</button></li><li><button>It depends on the compiler</button></li></ol>
+<p class="q-why">A conversion that changes behavior is a failure. Correctness is the gate; speed is the score among correct answers.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why are public leaderboards a starting point rather than the answer?</p>
+<ol><li><button>They rarely match your task, and scores can be gamed or leak into training data</button></li><li><button>They only cover closed models</button></li><li><button>They're always out of date by years</button></li><li><button>They don't report accuracy</button></li></ol>
+<p class="q-why">Use them to build a shortlist, then decide with a benchmark on your own task.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">Which is the safest way to run code a model generated from user input?</p>
+<ol><li><button>Directly on your laptop, since you can read it first</button></li><li><button>In a container or VM with no network, no access to your files, and a timeout</button></li><li><button>In a Jupyter cell with <code>exec()</code></button></li><li><button>Only after asking the model if it's safe</button></li></ol>
+<p class="q-why">Isolation and limits hold regardless of what the code tries to do. Asking the model doesn't.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w4)"><h2>Exercise: a benchmark for your own work</h2>
+<p>Pick a task you'd actually use a model for, with a checkable answer: converting a config format, writing a regex that must match a list of examples, or writing a SQL query that must return known rows. Write ten test cases, run three models (one frontier, one cheap, one local), and record pass rate, cost and time in a table. Keep the table; you'll extend this idea with proper evals later.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week4">week4/</a> — the notebooks</li>
+  <li><a href="https://lmarena.ai/">LMArena</a> — crowd-sourced model comparisons</li>
+  <li><a href="https://artificialanalysis.ai/">Artificial Analysis</a> — price, speed and benchmark comparisons</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

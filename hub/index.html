@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EDF0F2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Courses">
+<title>Field courses</title>
+<meta name="description" content="Self-contained courses on AI engineering.">
+<style>
+:root{--paper:#EDF0F2;--surface:#F8F9FA;--ink:#18212B;--muted:#56616C;--rule:#C7CED5;--link:#245BA8;
+  --body:Charter,"Bitstream Charter","Iowan Old Style","Sitka Text",Cambria,Georgia,serif;
+  --display:Bahnschrift,"DIN Alternate","DIN Next","D-DIN","Avenir Next Condensed","Roboto Condensed","Arial Narrow",sans-serif;
+  --w1:#2D62B0;--w2:#C0392B;--w3:#D9731A;--w4:#B8920F;--w5:#1F8A8A;--w6:#2D62B0;--w7:#6E4FA8;--w8:#3E9B3A;--w10:#B0457A}
+[data-theme="dark"]{--paper:#141A21;--surface:#1B232C;--ink:#E3E8ED;--muted:#9AA6B2;--rule:#2F3A45;--link:#86B4F2}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:1.07rem;line-height:1.6;-webkit-font-smoothing:antialiased;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--link);outline-offset:3px;border-radius:4px}
+.wrap{max-width:56rem;margin:0 auto;padding:clamp(2.2rem,7vw,5rem) clamp(1.15rem,4vw,2.5rem) 5rem}
+header{margin-bottom:2.6rem}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(2.5rem,7vw,4rem);line-height:1.05;margin:0 0 .8rem;letter-spacing:-.005em}
+.lede{font-size:1.18rem;max-width:36rem;margin:0}
+.shelf{list-style:none;padding:0;margin:0;display:grid;gap:1.1rem}
+.course a{display:grid;grid-template-columns:9.5rem 1fr;gap:1.4rem;align-items:center;text-decoration:none;background:var(--surface);
+  border:1px solid var(--rule);border-left:6px solid var(--accent);border-radius:6px;padding:1.2rem 1.4rem;transition:transform .2s,border-color .2s}
+.course a:hover{transform:translateX(4px);border-color:var(--accent)}
+.motif svg{display:block;width:100%;height:auto}
+.motif-tokens{display:flex;flex-wrap:wrap;gap:4px}
+.motif-tokens i{display:block;height:15px;border-radius:3px;background:color-mix(in srgb,var(--c) 30%,var(--paper));border:1.5px solid var(--c)}
+.c-body{display:flex;flex-direction:column;gap:.25rem;min-width:0}
+.c-body b{font-family:var(--display);font-size:1.45rem;line-height:1.15}
+.c-blurb{color:var(--ink)}
+.c-meta,.c-status{font-family:var(--display);color:var(--muted);font-size:.93rem}
+.c-prog{display:block;height:5px;background:var(--rule);border-radius:3px;overflow:hidden;margin-top:.45rem}
+.c-prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .8s cubic-bezier(.3,.7,.1,1) .2s}
+footer{margin-top:3rem;font-family:var(--display);color:var(--muted);font-size:.93rem;display:flex;gap:1rem;flex-wrap:wrap;align-items:center}
+button{font-family:var(--display);font-size:.92rem;border:1.5px solid var(--ink);background:transparent;color:var(--ink);padding:.45rem .8rem;border-radius:4px;cursor:pointer;min-height:40px}
+@media (hover:hover){button:hover{background:var(--ink);color:var(--paper)}}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+.course{animation:rise .5s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--n,0) * 90ms + 100ms)}
+@media (max-width:640px){.course a{grid-template-columns:1fr;gap:.9rem}.motif{max-width:9rem}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Field courses</h1>
+  <p class="lede">Self-contained courses on AI engineering. Each one works offline, on a phone, and remembers your progress in this browser.</p>
+</header>
+<ol class="shelf">{{CARDS}}</ol>
+<footer><span>Built from the <code>courses/</code> folder of this repo.</span><button type="button" id="theme">Switch to dark</button></footer>
+</div>
+<script>
+(function(){
+  // Links to the Harness course from before it moved under harness-engineering/ still work
+  var h = location.hash.slice(1);
+  if (/^(m\d+|start|checklist|glossary|sources|capstone-check)$/.test(h)) { location.replace('harness-engineering/#' + h); return; }
+  var courses = {{COURSES_JSON}};
+  function get(prefix,k){ try { return JSON.parse(localStorage.getItem(prefix+':'+k)); } catch(e){ return null; } }
+  document.querySelectorAll('.course').forEach(function(li, n){
+    li.style.setProperty('--n', n);
+    var c = courses.filter(function(x){ return x.slug===li.dataset.slug; })[0]; if (!c) return;
+    var done = get(c.storage,'done') || {}, last = get(c.storage,'last');
+    var count = Object.keys(c.titles).filter(function(id){ return done[id]; }).length;
+    li.querySelector('.c-prog i').style.width = (100*count/c.modules)+'%';
+    var st = li.querySelector('.c-status'), a = li.querySelector('a');
+    if (count===c.modules) st.textContent = 'Complete';
+    else if (count || (last && last!=='start')) {
+      st.textContent = count+' of '+c.modules+' complete' + (last && c.titles[last] ? ' · continue with '+c.titles[last] : '');
+      if (last && c.titles[last]) a.href = c.slug + '/#' + last;
+    } else st.textContent = 'Not started';
+  });
+  var btn=document.getElementById('theme'), saved=null;
+  try { saved = localStorage.getItem('hub:theme'); } catch(e){}
+  function set(t){ document.documentElement.dataset.theme=t; btn.textContent = t==='dark'?'Switch to light':'Switch to dark'; }
+  set(saved || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light'));
+  btn.addEventListener('click', function(){ var t=document.documentElement.dataset.theme==='dark'?'light':'dark'; set(t); try{localStorage.setItem('hub:theme',t);}catch(e){} });
+})();
+</script>
+</body>
+</html>

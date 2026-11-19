@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#EDF0F2">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Harness Course">
+<meta name="apple-mobile-web-app-title" content="{{SHORT}}">
 <script>document.documentElement.className="js";</script>
-<title>Harness Engineering: a field course</title>
+<title>{{TITLE}}: {{KIND}}</title>
+<meta name="description" content="{{SUBTITLE}}">
 <style>
 :root{
   --paper:#EDF0F2; --surface:#F8F9FA; --ink:#18212B; --muted:#56616C; --rule:#C7CED5;
@@ -209,6 +210,10 @@ dl.gloss dd{margin:.15rem 0 0 0}
 .js figure.diagram .ln[pathLength]{stroke-dasharray:1;stroke-dashoffset:1}
 .js figure.diagram.inview .ln[pathLength]{animation:dIn .2s both,drawLn .9s cubic-bezier(.4,.1,.2,1) both;animation-delay:var(--d,0ms)}
 .js figure.diagram:not(.inview) .live{display:none}
+@keyframes barGrow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.js figure.diagram .bar{transform-box:fill-box;transform-origin:left center}
+.js figure.diagram:not(.inview) .bar{transform:scaleX(0)}
+.js figure.diagram.inview .bar{animation:barGrow .9s cubic-bezier(.3,.7,.1,1) both;animation-delay:calc(var(--d,0ms) + 150ms)}
 /* loom: hover a terminal to trace its strand; signals run along each wire */
 .loom-svg .strand{transition:opacity .25s,stroke-width .25s}
 .loom-svg.tracing .strand{opacity:.22}
@@ -276,6 +281,7 @@ pre.wrap{white-space:pre-wrap;word-break:break-word}
   figure.diagram{padding:.8rem;margin-left:-.4rem;margin-right:-.4rem}
   .diagram-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-bottom:.4rem}
   .diagram-scroll svg{min-width:640px}
+  .diagram-scroll svg.chart{min-width:0}
   .diagram-hint{display:block;font-family:var(--display);font-size:.85rem;color:var(--muted);margin:0 0 .45rem}
   /* code */
   .code{margin-left:-.4rem;margin-right:-.4rem}
@@ -315,15 +321,20 @@ pre.wrap{white-space:pre-wrap;word-break:break-word}
 .mobile-index small{display:block;color:var(--muted);font-size:.82rem}
 @media (hover:none){ .loom-svg a text{text-decoration:none} }
 @media print{nav.loom,.topbar,.scrim,.mod-foot,.code-tools,.diagram-hint{display:none}.module{display:block!important;page-break-after:always}.app{display:block}}
+.hub-link{display:inline-block;font-size:.86rem;color:var(--muted);text-decoration:none;margin-bottom:.55rem}
+.hub-link::before{content:"‹ "}
+.hub-link:hover{color:var(--ink);text-decoration:underline}
+{{COURSE_CSS}}
 </style>
+<script>window.COURSE={{COURSE_JSON}};</script>
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
 <div class="app">
 <nav class="loom" id="nav" aria-label="Course modules">
-  <div class="brand"><b>Harness Engineering</b><span>A field course on building production-grade agent harnesses</span>
+  <div class="brand"><a class="hub-link" href="../">All courses</a><b>{{TITLE}}</b><span>{{SUBTITLE}}</span>
     <div class="progress" aria-hidden="true"><i id="progbar"></i></div>
-    <p class="progress-label" id="proglabel">0 of 12 modules complete</p>
+    <p class="progress-label" id="proglabel"></p>
   </div>
   <ol id="navlist">{{NAV}}</ol>
   <div class="nav-tools">
@@ -331,7 +342,7 @@ pre.wrap{white-space:pre-wrap;word-break:break-word}
     <button type="button" id="reset">Reset progress</button>
   </div>
 </nav>
-<div class="topbar" role="banner"><button type="button" id="menu" aria-controls="nav" aria-expanded="false">Modules</button><span class="tb-title" id="tbtitle">Harness Engineering</span><span class="tb-prog" id="tbprog"></span></div>
+<div class="topbar" role="banner"><button type="button" id="menu" aria-controls="nav" aria-expanded="false">Modules</button><span class="tb-title" id="tbtitle">{{TITLE}}</span><span class="tb-prog" id="tbprog"></span></div>
 <div class="scrim" id="scrim"></div>
 <div class="readbar" aria-hidden="true"><i id="readbar"></i></div>
 <main id="content" tabindex="-1">

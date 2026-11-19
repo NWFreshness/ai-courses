@@ -1,0 +1,153 @@
+<section class="module" id="m2" data-title="Week 2: Chat apps and tools" data-wire="var(--w2)" data-group="Foundations">
+<div class="wire-band" style="--wire:var(--w2)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 2 · Module 2 of 9 · <code>week2/</code></p>
+  <h1>Many models, real interfaces, and tools</h1>
+  <p class="lede">Week 2 widens the lens to every major provider, puts a user interface on your code with Gradio, builds a chatbot that keeps its history, and then gives it tools: functions it can ask your code to run. It closes with an airline assistant that looks up prices in a database, draws pictures and speaks.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w2)">
+  <h2>By the end of this week you can</h2>
+  <ul>
+    <li>Call several providers through their native SDKs, compatible endpoints, routers, and LiteLLM.</li>
+    <li>Explain reasoning effort and prompt caching, and when each saves you money or improves answers.</li>
+    <li>Build Gradio interfaces and a chatbot that passes history correctly.</li>
+    <li>Implement tool calling end to end, including several tool calls in one turn.</li>
+  </ul>
+</div>
+
+<h2>Notebook map</h2>
+<div class="tbl nbmap"><table>
+<thead><tr><th>File</th><th>What happens</th><th>Look for</th></tr></thead>
+<tbody>
+<tr><td><code>day1.ipynb</code></td><td>Tour of providers; reasoning effort on puzzles; native SDKs; OpenRouter; LangChain; LiteLLM with cost tracking; prompt caching with Hamlet; two chatbots arguing</td><td>How the adversarial conversation builds each side's history</td></tr>
+<tr><td><code>day2.ipynb</code></td><td>Gradio: <code>Interface</code>, sharing, authentication, streaming, a model picker, the brochure generator as an app</td><td>Streaming by yielding the growing text from a generator</td></tr>
+<tr><td><code>day3.ipynb</code></td><td>Chatbots with <code>gr.ChatInterface</code>; a store assistant whose system prompt changes with the message</td><td>Converting Gradio history into API messages</td></tr>
+<tr><td><code>day4.ipynb</code></td><td>FlightAI airline assistant; the first tool; then tool prices from SQLite</td><td><code>handle_tool_calls</code> and the second model call</td></tr>
+<tr><td><code>day5.ipynb</code></td><td>Multimodal: image generation and text-to-speech; a custom <code>gr.Blocks</code> UI</td><td>The three styles of Gradio UI</td></tr>
+<tr><td><code>extra.ipynb</code>, <code>week2 EXERCISE.ipynb</code></td><td>Models drawing SVGs side by side; the end-of-week exercise</td><td>Your own prototype</td></tr>
+</tbody></table></div>
+<p class="cost">Cost: cents for text. Images cost a few cents each, so don't generate hundreds.</p>
+
+<h2>Four ways to reach a model</h2>
+<div class="tbl"><table>
+<thead><tr><th>Approach</th><th>Example</th><th>Trade-off</th></tr></thead>
+<tbody>
+<tr><td>Native SDK</td><td><code>anthropic.Anthropic().messages.create(...)</code></td><td>Full feature set for that provider; a different shape for each</td></tr>
+<tr><td>OpenAI-compatible endpoint</td><td><code>OpenAI(base_url=...)</code> for Gemini, DeepSeek, Groq, Ollama</td><td>One shape everywhere; some provider features missing</td></tr>
+<tr><td>Router</td><td>OpenRouter: one key, hundreds of models</td><td>Convenient for comparing; a middleman in the path</td></tr>
+<tr><td>Abstraction library</td><td>LiteLLM (light), LangChain (heavy)</td><td>LiteLLM gives one call plus token and cost reporting; LangChain adds a large framework you may not need yet</td></tr>
+</tbody></table></div>
+<p>The author's stated favorite is LiteLLM, because it's light: one <code>completion()</code> call with a <code>provider/model</code> string, and it reports token counts and cost for each response.</p>
+
+<h2>Two money-and-quality levers</h2>
+<h3>Reasoning effort</h3>
+<p>Reasoning models can "think" before answering, spending extra tokens to work through a problem. Day 1 contrasts training-time scaling (bigger models trained on more data) with inference-time scaling (letting a model spend more compute per question), using a coin puzzle that a model gets wrong with reasoning off and right with a little reasoning on. More effort means more tokens, cost and latency, so set it per task: low or none for summarizing, higher for puzzles, math and code.</p>
+<h3>Prompt caching</h3>
+<p>If many requests share a long identical prefix (a system prompt, a document, a codebase), providers can cache it and charge much less for the repeat. Day 1 demonstrates by asking a question about <em>Hamlet</em> with the whole play attached, twice, and printing cached tokens and cost. OpenAI and Gemini cache automatically above a size threshold; Anthropic needs explicit cache markers, and Gemini supports both styles. The rule that follows: <mark>put the stable, shared content first and the changing question last</mark>. The Harness Engineering course has a whole section on designing for the cache (<a href="../harness-engineering/#m4">Module 4</a>).</p>
+
+<h2>Gradio: an interface in a few lines</h2>
+<p>Gradio wraps a Python function in a web UI. You give it a function and describe the inputs and outputs; it renders the page and calls your function. If the function is a generator that <em>yields</em> successively longer strings, the output streams.</p>
+<figure class="code"><figcaption>A streaming model call as a web app</figcaption>
+<pre><code><span class="k">import</span> gradio <span class="k">as</span> gr
+
+<span class="k">def</span> <span class="f">ask</span>(prompt):
+    stream = client.chat.completions.create(model=MODEL, stream=<span class="k">True</span>,
+        messages=[{<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: SYSTEM}, {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: prompt}])
+    text = <span class="s">""</span>
+    <span class="k">for</span> chunk <span class="k">in</span> stream:
+        text += chunk.choices[<span class="s">0</span>].delta.content <span class="k">or</span> <span class="s">""</span>
+        <span class="k">yield</span> text                                  <span class="c"># Gradio redraws the output each time</span>
+
+gr.Interface(fn=ask, inputs=gr.Textbox(lines=6), outputs=gr.Markdown(), flagging_mode=<span class="s">"never"</span>).launch()</code></pre></figure>
+<p>Day 2 also shows <code>share=True</code> for a temporary public link, <code>auth=(user, password)</code> for a simple login, and forcing dark mode. Day 5 introduces the three styles of Gradio UI: <code>gr.Interface</code> for a function, <code>gr.ChatInterface</code> for chat, and <code>gr.Blocks</code> when you want to lay out components and wire events yourself.</p>
+
+<h2>A chatbot is a history-passing loop</h2>
+<p>With <code>gr.ChatInterface</code>, your function receives the new message and the history so far. Your job is to turn that into the messages list the API wants: system prompt, then the history, then the new message. That's Week 1's "illusion of memory" made concrete.</p>
+<figure class="code"><figcaption>The chat callback</figcaption>
+<pre><code><span class="k">def</span> <span class="f">chat</span>(message, history):
+    history = [{<span class="s">"role"</span>: h[<span class="s">"role"</span>], <span class="s">"content"</span>: h[<span class="s">"content"</span>]} <span class="k">for</span> h <span class="k">in</span> history]   <span class="c"># drop Gradio's extra fields</span>
+    messages = [{<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: SYSTEM}] + history + [{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: message}]
+    <span class="k">return</span> client.chat.completions.create(model=MODEL, messages=messages).choices[<span class="s">0</span>].message.content
+
+gr.ChatInterface(fn=chat, type=<span class="s">"messages"</span>).launch()</code></pre></figure>
+<p>Day 3's clothes-store assistant shows a small but powerful idea: the system prompt doesn't have to be fixed. When the user mentions belts, the code appends extra instructions for that turn. Injecting context based on what the user said is the seed of retrieval in Week 5.</p>
+
+<h2>Tools: letting the model ask your code for help</h2>
+<p>The model can't look up a ticket price. But you can describe a function to it, and it can reply with "please call <code>get_ticket_price</code> with <code>destination_city="Paris"</code>" instead of an answer. Your code runs the function and sends the result back, and the model writes the final reply.</p>
+<figure class="diagram">
+<svg viewBox="0 0 680 230" role="img" aria-label="Tool calling: user message and tool definitions go to the model; the model returns a tool call; your code runs the function and appends the result; a second model call produces the answer.">
+  <rect x="10" y="40" width="130" height="60" rx="6" class="box"/><text x="75" y="66" text-anchor="middle" style="font-size:13px;font-weight:600">Messages</text><text x="75" y="84" text-anchor="middle" class="muted" style="font-size:11px">+ tool definitions</text>
+  <rect x="200" y="40" width="120" height="60" rx="6" fill="var(--ink)"/><text x="260" y="75" text-anchor="middle" style="fill:var(--paper);font-size:14px;font-weight:600">Model</text>
+  <rect x="380" y="40" width="140" height="60" rx="6" class="box" style="stroke:var(--w2);stroke-width:2.5"/><text x="450" y="66" text-anchor="middle" style="font-size:13px;font-weight:600">tool_calls</text><text x="450" y="84" text-anchor="middle" class="muted" style="font-size:11px">name + JSON arguments</text>
+  <rect x="380" y="150" width="140" height="60" rx="6" class="box"/><text x="450" y="176" text-anchor="middle" style="font-size:13px;font-weight:600">Your function</text><text x="450" y="194" text-anchor="middle" class="muted" style="font-size:11px">query SQLite</text>
+  <rect x="560" y="40" width="110" height="60" rx="6" class="box"/><text x="615" y="66" text-anchor="middle" style="font-size:13px;font-weight:600">Final reply</text><text x="615" y="84" text-anchor="middle" class="muted" style="font-size:11px">2nd model call</text>
+  <path d="M140 70 H200 M320 70 H380" class="ln" marker-end="url(#arr2w)"/>
+  <path d="M450 100 V150" class="ln" marker-end="url(#arr2w)"/>
+  <path d="M380 180 C260 180 260 110 260 100" class="ln" style="stroke:var(--w2);stroke-width:2" marker-end="url(#arr2w)"/>
+  <path d="M320 55 C420 10 520 10 560 55" class="ln" marker-end="url(#arr2w)"/>
+  <text x="250" y="205" class="muted" style="font-size:11px">role: tool result appended</text>
+  <defs><marker id="arr2w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+</svg>
+<figcaption>The model never runs anything. It asks; your code decides whether and how to act.</figcaption>
+</figure>
+<figure class="code"><figcaption>Day 4's pattern, condensed</figcaption>
+<pre><code>price_tool = {<span class="s">"type"</span>: <span class="s">"function"</span>, <span class="s">"function"</span>: {
+    <span class="s">"name"</span>: <span class="s">"get_ticket_price"</span>,
+    <span class="s">"description"</span>: <span class="s">"Get the price of a return ticket to the destination city."</span>,
+    <span class="s">"parameters"</span>: {<span class="s">"type"</span>: <span class="s">"object"</span>, <span class="s">"properties"</span>: {
+        <span class="s">"destination_city"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>, <span class="s">"description"</span>: <span class="s">"The city the customer wants to travel to"</span>}},
+      <span class="s">"required"</span>: [<span class="s">"destination_city"</span>], <span class="s">"additionalProperties"</span>: <span class="k">False</span>}}}
+
+<span class="k">def</span> <span class="f">chat</span>(message, history):
+    messages = [{<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: SYSTEM}] + clean(history) + [{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: message}]
+    response = client.chat.completions.create(model=MODEL, messages=messages, tools=[price_tool])
+    <span class="k">while</span> response.choices[<span class="s">0</span>].finish_reason == <span class="s">"tool_calls"</span>:
+        msg = response.choices[<span class="s">0</span>].message
+        messages.append(msg)                                         <span class="c"># the assistant's request</span>
+        <span class="k">for</span> call <span class="k">in</span> msg.tool_calls:                                  <span class="c"># there can be several</span>
+            args = json.loads(call.function.arguments)
+            result = get_ticket_price(**args)
+            messages.append({<span class="s">"role"</span>: <span class="s">"tool"</span>, <span class="s">"tool_call_id"</span>: call.id, <span class="s">"content"</span>: str(result)})
+        response = client.chat.completions.create(model=MODEL, messages=messages, tools=[price_tool])
+    <span class="k">return</span> response.choices[<span class="s">0</span>].message.content</code></pre></figure>
+<p>The notebook starts with a single tool call, then handles several in one turn, then moves the prices into SQLite with a <code>set_ticket_price</code> helper. Using a <code>while</code> loop rather than a single <code>if</code>, as above, lets the model chain lookups. That loop is the heart of every agent you'll build, and it's exactly what <a href="../harness-engineering/#m2">Harness Engineering Module 2</a> takes apart in detail.</p>
+
+<h2>Going multimodal</h2>
+<p>Day 5 adds an <code>artist</code> function that generates a picture of the destination city and a <code>talker</code> that turns the reply into speech, both through the same OpenAI client. The tool handler now also returns which cities were looked up, so the UI knows what to draw. A custom <code>gr.Blocks</code> layout ties chat, image and audio together.</p>
+
+<div class="note pitfall"><h4>Tool results the model can't use</h4>
+<p>Return something the model can read and act on: <code>"London: $799"</code> or <code>"No price found for Lisbon; ask the customer to pick another city"</code>, not <code>None</code> or a raw exception. And always send back one result per tool call ID, or the next API call will fail.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Pick the access layer per job: native SDK for full features, compatible endpoints for one shape, LiteLLM for light abstraction and cost tracking.</li>
+  <li>Spend reasoning effort only where it pays; put shared content first so prompt caching can help.</li>
+  <li>Gradio turns functions into apps; yielding text streams it.</li>
+  <li>A chatbot is history in, reply out. Tools are a loop: the model asks, your code runs, the result goes back.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">The model responds with <code>finish_reason == "tool_calls"</code>. What must your code do before calling the model again?</p>
+<ol><li><button>Discard the response and ask again with a stronger prompt</button></li><li><button>Show the tool call to the user</button></li><li><button>Append the assistant message, run each requested tool, and append a <code>tool</code> message per call ID</button></li><li><button>Switch to a model that doesn't use tools</button></li></ol>
+<p class="q-why">The next call needs the model's request and every matching result in the history, or it can't continue the conversation.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">You ask 50 questions about the same 200-page manual. How should you order the prompt to benefit from caching?</p>
+<ol><li><button>Manual first, question last, identical manual text each time</button></li><li><button>Question first, then the manual</button></li><li><button>Shuffle the manual's sections to avoid repetition</button></li><li><button>Order doesn't matter</button></li></ol>
+<p class="q-why">Caches match on identical prefixes. A stable prefix followed by the changing question gets the discount.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">Which Gradio building block fits a custom layout with a chat panel, an image and an audio player?</p>
+<ol><li><button><code>gr.Interface</code></button></li><li><button><code>gr.Blocks</code></button></li><li><button><code>gr.ChatInterface</code></button></li><li><button>None; use Flask</button></li></ol>
+<p class="q-why"><code>gr.Blocks</code> lets you place components and wire events yourself, which is what Day 5 does.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w2)"><h2>Exercise: an assistant for something you know</h2>
+<p>Build a FlightAI-style assistant for a domain you work in, with two tools backed by SQLite: one to look something up and one to change something. Make the change tool ask for confirmation first by returning "Confirm: …" for the model to relay, and only apply it on a second call that includes <code>confirmed=true</code>. Log every tool call to the console so you can watch the loop.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week2">week2/</a> — the notebooks</li>
+  <li><a href="https://www.gradio.app/guides/quickstart">Gradio quickstart</a></li>
+  <li><a href="https://platform.openai.com/docs/guides/function-calling">Function calling guide</a> — OpenAI</li>
+  <li><a href="https://docs.litellm.ai/">LiteLLM documentation</a></li>
+</ul>
+<div class="mod-foot"></div>
+</section>

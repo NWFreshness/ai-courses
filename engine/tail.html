@@ -4,8 +4,8 @@
 (function(){
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   var store = {
-    get: function(k){ try { return JSON.parse(localStorage.getItem('he-course:'+k)); } catch(e){ return null; } },
-    set: function(k,v){ try { localStorage.setItem('he-course:'+k, JSON.stringify(v)); } catch(e){} }
+    get: function(k){ try { return JSON.parse(localStorage.getItem(window.COURSE.storage+':'+k)); } catch(e){ return null; } },
+    set: function(k,v){ try { localStorage.setItem(window.COURSE.storage+':'+k, JSON.stringify(v)); } catch(e){} }
   };
   var mods = Array.prototype.slice.call(document.querySelectorAll('section.module'));
   var core = mods.filter(function(m){ return /^m\d+$/.test(m.id); });
@@ -67,8 +67,8 @@
     if (!mod) mod = mods[0];
     mods.forEach(function(m){ var on = m===mod; m.classList.toggle('active', on); if (m._link){ if (on) m._link.setAttribute('aria-current','page'); else m._link.removeAttribute('aria-current'); } });
     var num = /^m(\d+)$/.exec(mod.id);
-    document.getElementById('tbtitle').textContent = mod.id==='start' ? 'Harness Engineering' : (num ? num[1]+'. ' : '') + mod.dataset.title;
-    document.title = (mod.id==='start' ? '' : mod.dataset.title+' · ') + 'Harness Engineering';
+    document.getElementById('tbtitle').textContent = mod.id==='start' ? window.COURSE.title : (num ? num[1]+'. ' : '') + mod.dataset.title;
+    document.title = (mod.id==='start' ? '' : mod.dataset.title+' · ') + window.COURSE.title;
     var toTop = function(){ window.scrollTo(0,0); };
     if (target === mod) { toTop(); requestAnimationFrame(toTop); setTimeout(toTop, 60); document.getElementById('content').focus({preventScroll:true}); }
     else if (target) { requestAnimationFrame(function(){ target.scrollIntoView(); }); }
@@ -190,6 +190,8 @@
   var drawn=false;
   function drawLoom(){
     if (drawn) return; drawn=true;
+    var ts=document.querySelector('.token-stream');
+    if (ts){ ts.classList.add('streaming'); setTimeout(function(){ ts.classList.add('streamed'); }, 400 + 230*ts.querySelectorAll('.tok').length); }
     var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     document.querySelectorAll('.loom-svg .strand').forEach(function(p, i){
       if (reduce || !p.getTotalLength) return;

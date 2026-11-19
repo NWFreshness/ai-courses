@@ -1,0 +1,133 @@
+<section class="module" id="m1" data-title="Week 1: Frontier models" data-wire="var(--w1)" data-group="Foundations">
+<div class="wire-band" style="--wire:var(--w1)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 1 · Module 1 of 9 · <code>week1/</code></p>
+  <h1>Frontier models and your first LLM product</h1>
+  <p class="lede">Week 1 makes the first API call, turns it into a website summarizer, and ends with a brochure generator that chains several model calls. Along the way it takes the mystery out of what an LLM API really is: an HTTP endpoint that takes a list of messages and returns the most likely continuation.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w1)">
+  <h2>By the end of this week you can</h2>
+  <ul>
+    <li>Call a chat model with system and user messages, and explain what each role does.</li>
+    <li>Point the same client code at OpenAI, Gemini, or a local Ollama model.</li>
+    <li>Explain tokens, and why every call to an LLM is stateless.</li>
+    <li>Chain two model calls, ask for JSON, and stream a long answer back.</li>
+  </ul>
+</div>
+
+<h2>Notebook map</h2>
+<div class="tbl nbmap"><table>
+<thead><tr><th>File</th><th>What happens</th><th>Look for</th></tr></thead>
+<tbody>
+<tr><td><code>day1.ipynb</code></td><td>First frontier call; a snarky website summarizer using <code>scraper.py</code></td><td>How system and user prompts are assembled into <code>messages</code></td></tr>
+<tr><td><code>day2.ipynb</code></td><td>The same call as raw HTTP, then via the client library, then via Gemini and Ollama endpoints</td><td>The <code>base_url</code> trick; the homework to port Day 1 to Ollama</td></tr>
+<tr><td><code>day4.ipynb</code></td><td>Tokenizing text with <code>tiktoken</code>; the "illusion of memory"</td><td>Why the model forgets your name unless you resend it</td></tr>
+<tr><td><code>day5.ipynb</code></td><td>Brochure generator: pick relevant links with one call, write the brochure with another, then stream it</td><td>One-shot JSON prompting; streaming with <code>stream=True</code></td></tr>
+<tr><td><code>week1 EXERCISE.ipynb</code></td><td>Build a technical-question explainer using a frontier model and Llama</td><td>Your first tool for yourself</td></tr>
+</tbody></table></div>
+<p class="cost">Cost: cents. Everything here also runs on Ollama for free.</p>
+
+<h2>The Chat Completions shape</h2>
+<p>Almost every provider now accepts the same request: a model name and a list of messages, each with a role. The <strong>system</strong> message sets the job and the tone. <strong>User</strong> messages are what you ask. <strong>Assistant</strong> messages are what the model said before. The response is the model's prediction of the next assistant message.</p>
+<figure class="code"><figcaption>The smallest useful program</figcaption>
+<pre><code><span class="k">from</span> dotenv <span class="k">import</span> load_dotenv
+<span class="k">from</span> openai <span class="k">import</span> OpenAI
+
+load_dotenv(override=<span class="k">True</span>)
+client = OpenAI()                      <span class="c"># reads OPENAI_API_KEY from the environment</span>
+
+<span class="k">def</span> <span class="f">summarize</span>(page_text: str) -> str:
+    messages = [
+        {<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: <span class="s">"You summarize web pages in three short bullet points. Ignore navigation text."</span>},
+        {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Summarize this page:\n\n"</span> + page_text},
+    ]
+    response = client.chat.completions.create(model=MODEL, messages=messages)
+    <span class="k">return</span> response.choices[<span class="s">0</span>].message.content</code></pre></figure>
+
+<h3>The client library is a thin wrapper</h3>
+<p>Day 2 makes this point by sending the same request with <code>requests.post</code> to the provider's <code>/chat/completions</code> URL with a bearer token. The <code>openai</code> package doesn't contain a model; it builds that HTTP request and parses the JSON. That matters because so many providers expose <strong>OpenAI-compatible endpoints</strong>: the same client works against them if you change <code>base_url</code> and the key.</p>
+<figure class="code"><figcaption>One client library, three providers</figcaption>
+<pre><code>gemini = OpenAI(base_url=<span class="s">"https://generativelanguage.googleapis.com/v1beta/openai/"</span>,
+                api_key=os.environ[<span class="s">"GOOGLE_API_KEY"</span>])
+ollama = OpenAI(base_url=<span class="s">"http://localhost:11434/v1"</span>, api_key=<span class="s">"ollama"</span>)   <span class="c"># key is ignored</span>
+
+reply = ollama.chat.completions.create(model=<span class="s">"llama3.2"</span>, messages=messages)</code></pre></figure>
+<p>Running locally trades capability for privacy and price: nothing leaves your machine and nothing is billed, but a 3-billion-parameter model is much less capable than a frontier one. The notebooks warn against pulling models such as Llama 3.3 at 70 billion parameters, which are too large for most home computers.</p>
+
+<h2>Tokens</h2>
+<p>Models don't read characters or words. They read <strong>tokens</strong>: chunks of text from a fixed vocabulary, often a common word, a piece of a word, or punctuation with its leading space. Day 4 encodes a sentence with <code>tiktoken</code> and prints each token ID beside its text. Tokens matter because they're what you pay for, what fills the context window, and why models are oddly bad at things like counting letters: the letters are hidden inside tokens.</p>
+
+<h2>The illusion of memory</h2>
+<p>Day 4's second half is the "aha" moment for many people. Tell the model your name in one call, ask for it in the next, and it has no idea. <mark>Every call is stateless.</mark> A chat product creates the impression of memory by resending the whole conversation every time. That's why long chats cost more and eventually run out of room, and it's the root of almost everything in later weeks: chat UIs (Week 2), retrieval (Week 5), and agent memory (Week 8) are all ways of choosing what goes into that list.</p>
+
+<h2>From one call to a small pipeline</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 200" role="img" aria-label="The brochure generator: fetch the landing page, ask a model to pick relevant links as JSON, fetch those pages, then ask a second model call to write the brochure, streamed back.">
+  <rect x="10" y="70" width="110" height="56" rx="6" class="box"/><text x="65" y="95" text-anchor="middle" style="font-size:13px;font-weight:600">Landing page</text><text x="65" y="113" text-anchor="middle" class="muted" style="font-size:11px">links + text</text>
+  <rect x="150" y="70" width="120" height="56" rx="6" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="210" y="95" text-anchor="middle" style="font-size:13px;font-weight:600">LLM call 1</text><text x="210" y="113" text-anchor="middle" class="muted" style="font-size:11px">pick links → JSON</text>
+  <rect x="300" y="70" width="110" height="56" rx="6" class="box"/><text x="355" y="95" text-anchor="middle" style="font-size:13px;font-weight:600">Fetch pages</text><text x="355" y="113" text-anchor="middle" class="muted" style="font-size:11px">about, careers…</text>
+  <rect x="440" y="70" width="120" height="56" rx="6" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="500" y="95" text-anchor="middle" style="font-size:13px;font-weight:600">LLM call 2</text><text x="500" y="113" text-anchor="middle" class="muted" style="font-size:11px">write brochure</text>
+  <rect x="590" y="70" width="80" height="56" rx="6" class="box"/><text x="630" y="103" text-anchor="middle" style="font-size:13px;font-weight:600">Stream</text>
+  <path d="M120 98 H150 M270 98 H300 M410 98 H440 M560 98 H590" class="ln" marker-end="url(#arr1w)"/>
+  <text x="340" y="170" text-anchor="middle" class="muted" style="font-size:12px">Two model calls, each with one clear job. Code does the fetching in between.</text>
+  <path id="bp1" d="M65 98 H630" fill="none"/>
+  <g class="live"><circle r="6" fill="var(--w1)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="4s" repeatCount="indefinite"><mpath href="#bp1"/></animateMotion></circle></g>
+  <defs><marker id="arr1w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+</svg>
+<figcaption>Day 5's brochure generator. The course calls this an early example of an agentic design pattern: several model calls, each with a narrow task.</figcaption>
+</figure>
+<p>Three techniques arrive together on Day 5:</p>
+<ul>
+  <li><strong>Ask for JSON, with an example.</strong> The link-picker's system prompt shows one example of the exact JSON it wants back. Showing one example is called one-shot prompting; several is few-shot. The notebook mentions that a stricter technique, structured outputs, comes in Week 8.</li>
+  <li><strong>Let code do what code is good at.</strong> The model decides which links matter; plain Python fetches them. Don't ask a model to do what a function can.</li>
+  <li><strong>Stream long answers.</strong> With <code>stream=True</code> you get the reply as a series of small chunks and can show text as it arrives.</li>
+</ul>
+<figure class="code"><figcaption>Streaming a reply</figcaption>
+<pre><code>stream = client.chat.completions.create(model=MODEL, messages=messages, stream=<span class="k">True</span>)
+reply = <span class="s">""</span>
+<span class="k">for</span> chunk <span class="k">in</span> stream:
+    reply += chunk.choices[<span class="s">0</span>].delta.content <span class="k">or</span> <span class="s">""</span>    <span class="c"># the last chunk's delta can be empty</span>
+    show(reply)                                         <span class="c"># update the display in place</span></code></pre></figure>
+
+<div class="note pitfall"><h4>Pages that come back empty</h4>
+<p>The repo's simple scraper reads the HTML the server sends. Sites built with client-side JavaScript (many React apps) send almost no text, and sites behind bot protection may return a 403. The notebook suggests a browser-automation scraper such as Selenium or Playwright for those; there's a Selenium version in the community contributions.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>A chat API takes a list of role-tagged messages and returns the next assistant message.</li>
+  <li>The client library is just HTTP; OpenAI-compatible endpoints let one client reach many providers, including local Ollama.</li>
+  <li>Models see tokens, and every call is stateless: memory is whatever you put in the messages.</li>
+  <li>Split work into small calls with clear jobs, ask for JSON with an example, and stream long output.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">You send "Hi, I'm Dana" in one API call and "What's my name?" in a second. Why doesn't the model know?</p>
+<ol><li><button>The model's memory was reset by a timeout</button></li><li><button>Each call is stateless; the second call didn't include the first exchange</button></li><li><button>Names are filtered for privacy</button></li><li><button>The system prompt overrode it</button></li></ol>
+<p class="q-why">The model only sees what's in the current request. Chat apps resend the whole conversation to create the impression of memory.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">To switch the Day 1 summarizer from OpenAI to a local Llama model, what changes?</p>
+<ol><li><button>Install a different client library and rewrite the calls</button></li><li><button>Convert messages to a single prompt string</button></li><li><button>Nothing; the model name is enough</button></li><li><button>Create the client with Ollama's <code>base_url</code> and a placeholder key, and change the model name</button></li></ol>
+<p class="q-why">Ollama exposes an OpenAI-compatible endpoint at <code>localhost:11434/v1</code>, so the same code works.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why does the brochure generator use two model calls instead of one?</p>
+<ol><li><button>Each call gets a narrow job (choose links, then write), and code fetches pages in between</button></li><li><button>The API limits each call to one task</button></li><li><button>Streaming only works on the second call</button></li><li><button>It halves the cost</button></li></ol>
+<p class="q-why">Splitting the work makes each step easier for the model and lets ordinary code handle fetching, which a model can't do on its own.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w1)"><h2>Exercise: your own study tutor</h2>
+<p>Do the Week 1 exercise: a tool that takes a technical question and explains the answer, streamed, from both a frontier model and Llama. Then improve it: add a system prompt that asks for an explanation at your level, a short example, and a one-line summary at the end. Compare the two models on five questions you actually have this week and note where the local model falls short.</p>
+</section>
+
+<h2>Go further</h2>
+<ul>
+  <li>Count tokens before you send: use <code>tiktoken</code> to print the token count of each brochure prompt, then multiply by your model's price.</li>
+  <li>Read <a href="../harness-engineering/#m2">Harness Engineering, Module 2</a> when you're curious how this single call grows into an agent loop.</li>
+</ul>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week1">week1/</a> — the notebooks</li>
+  <li><a href="https://platform.openai.com/docs/api-reference/chat">Chat Completions API reference</a> — OpenAI</li>
+  <li><a href="https://github.com/openai/tiktoken">tiktoken</a> — OpenAI's tokenizer library</li>
+  <li><a href="https://ollama.com">Ollama</a></li>
+</ul>
+<div class="mod-foot"></div>
+</section>

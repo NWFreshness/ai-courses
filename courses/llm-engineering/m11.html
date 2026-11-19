@@ -1,0 +1,120 @@
+<section class="module" id="cheatsheet" data-title="Cheat sheet" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Cheat sheet</h1>
+<p class="lede">The patterns you'll type most often, in one place.</p></header>
+
+<h2>Clients and endpoints</h2>
+<figure class="code"><figcaption>One client shape for most providers</figcaption>
+<pre><code><span class="k">from</span> openai <span class="k">import</span> OpenAI
+openai  = OpenAI()                                                     <span class="c"># OPENAI_API_KEY</span>
+gemini  = OpenAI(base_url=<span class="s">"https://generativelanguage.googleapis.com/v1beta/openai/"</span>, api_key=GOOGLE_API_KEY)
+ollama  = OpenAI(base_url=<span class="s">"http://localhost:11434/v1"</span>, api_key=<span class="s">"ollama"</span>)
+router  = OpenAI(base_url=<span class="s">"https://openrouter.ai/api/v1"</span>, api_key=OPENROUTER_API_KEY)
+
+r = client.chat.completions.create(model=MODEL, messages=[{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Hi"</span>}])
+r.choices[<span class="s">0</span>].message.content;  r.usage.prompt_tokens;  r.usage.completion_tokens</code></pre></figure>
+
+<h2>Messages, streaming, structured output</h2>
+<figure class="code"><figcaption>The everyday patterns</figcaption>
+<pre><code>messages = [{<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: SYSTEM}] + history + [{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: msg}]
+
+<span class="k">for</span> chunk <span class="k">in</span> client.chat.completions.create(model=MODEL, messages=messages, stream=<span class="k">True</span>):
+    text += chunk.choices[<span class="s">0</span>].delta.content <span class="k">or</span> <span class="s">""</span>
+
+parsed = client.chat.completions.parse(model=MODEL, messages=messages, response_format=MyPydanticModel)
+obj = parsed.choices[<span class="s">0</span>].message.parsed</code></pre></figure>
+
+<h2>Tool-calling loop</h2>
+<figure class="code"><figcaption>Ask, run, return, repeat</figcaption>
+<pre><code>r = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
+<span class="k">while</span> r.choices[<span class="s">0</span>].finish_reason == <span class="s">"tool_calls"</span>:
+    msg = r.choices[<span class="s">0</span>].message;  messages.append(msg)
+    <span class="k">for</span> call <span class="k">in</span> msg.tool_calls:
+        result = FUNCTIONS[call.function.name](**json.loads(call.function.arguments))
+        messages.append({<span class="s">"role"</span>: <span class="s">"tool"</span>, <span class="s">"tool_call_id"</span>: call.id, <span class="s">"content"</span>: str(result)})
+    r = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)</code></pre></figure>
+
+<h2>Gradio</h2>
+<figure class="code"><figcaption>Three UI styles</figcaption>
+<pre><code>gr.Interface(fn=f, inputs=<span class="s">"textbox"</span>, outputs=gr.Markdown()).launch()   <span class="c"># a function</span>
+gr.ChatInterface(fn=chat, type=<span class="s">"messages"</span>).launch()                <span class="c"># chat(message, history)</span>
+<span class="k">with</span> gr.Blocks() <span class="k">as</span> ui: ...;  ui.launch()                           <span class="c"># your own layout and events</span>
+<span class="c"># launch(share=True) public link · launch(inbrowser=True) open a tab · auth=("user", "pass") login</span></code></pre></figure>
+
+<h2>Hugging Face</h2>
+<figure class="code"><figcaption>Pipelines, templates, 4-bit loading</figcaption>
+<pre><code>pipeline(<span class="s">"summarization"</span>, device=<span class="s">"cuda"</span>)(text)
+tok.apply_chat_template(messages, add_generation_prompt=<span class="k">True</span>, return_tensors=<span class="s">"pt"</span>)
+BitsAndBytesConfig(load_in_4bit=<span class="k">True</span>, bnb_4bit_quant_type=<span class="s">"nf4"</span>, bnb_4bit_compute_dtype=torch.bfloat16)
+AutoModelForCausalLM.from_pretrained(MODEL_ID, quantization_config=quant, device_map=<span class="s">"auto"</span>)</code></pre></figure>
+
+<h2>uv and Modal</h2>
+<figure class="code"><figcaption>Terminal</figcaption>
+<pre><code>uv sync                     <span class="c"># install the project environment</span>
+uv add package              <span class="c"># add a dependency</span>
+uv run script.py            <span class="c"># run inside the environment</span>
+uv run modal token set --token-id ak-... --token-secret as-...
+uv run modal run file.py    <span class="c"># ephemeral run</span>
+uv run modal deploy file.py <span class="c"># persistent service</span></code></pre></figure>
+<div class="mod-foot"></div>
+</section>
+
+<section class="module" id="glossary" data-title="Glossary" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Glossary</h1></header>
+<dl class="gloss">
+  <dt>Adapter (LoRA)</dt><dd>A small set of trainable matrices added beside a frozen model's layers; the output of fine-tuning with LoRA.</dd>
+  <dt>Base model / instruct model</dt><dd>A model trained only to continue text, versus one further trained to follow chat instructions.</dd>
+  <dt>Batch API</dt><dd>A way to submit many requests to be processed asynchronously at a lower price.</dd>
+  <dt>Chat template</dt><dd>The model-specific format, with special tokens, that wraps a conversation into model input.</dd>
+  <dt>Chunk</dt><dd>A passage of a document stored and retrieved as one unit in RAG.</dd>
+  <dt>Context window</dt><dd>The maximum number of tokens a model can take in one request, including the conversation so far.</dd>
+  <dt>Embedding</dt><dd>A vector representation of text in which similar meanings are close together.</dd>
+  <dt>Ensemble</dt><dd>A combination of several models' predictions, here a weighted average.</dd>
+  <dt>Frontier model</dt><dd>One of the most capable models available, usually closed and accessed by API.</dd>
+  <dt>Gated model</dt><dd>A Hugging Face model you can download only after accepting its license.</dd>
+  <dt>Hit rate</dt><dd>The share of test questions for which at least one relevant chunk was retrieved.</dd>
+  <dt>LLM as judge</dt><dd>Using a model to grade another model's output against criteria or a reference answer.</dd>
+  <dt>MRR</dt><dd>Mean reciprocal rank: the average of 1 / (position of the first relevant result).</dd>
+  <dt>nDCG</dt><dd>Normalized discounted cumulative gain: rewards relevant results more the higher they rank.</dd>
+  <dt>OpenAI-compatible endpoint</dt><dd>Another provider's API that accepts the same request shape as OpenAI's Chat Completions.</dd>
+  <dt>Prompt caching</dt><dd>Provider-side reuse of an identical prompt prefix, billed at a discount.</dd>
+  <dt>QLoRA</dt><dd>LoRA fine-tuning with the frozen base model held in 4-bit precision.</dd>
+  <dt>Quantization</dt><dd>Storing model weights at lower precision (for example 4-bit) to cut memory use.</dd>
+  <dt>RAG</dt><dd>Retrieval-augmented generation: retrieve relevant context and include it in the prompt.</dd>
+  <dt>Reasoning effort</dt><dd>A setting on reasoning models that controls how much they think before answering.</dd>
+  <dt>Recall@K</dt><dd>For one test, relevant chunks in the top K divided by all relevant chunks.</dd>
+  <dt>Reranking</dt><dd>Reordering retrieved results by relevance, often with a model, before using the best few.</dd>
+  <dt>Structured outputs</dt><dd>Constraining a model's reply to a schema so it parses into a typed object.</dd>
+  <dt>System prompt</dt><dd>The instruction that sets the model's task, tone and rules for a conversation.</dd>
+  <dt>Token</dt><dd>The unit of text a model reads and writes; what context limits and pricing are counted in.</dd>
+  <dt>Tool calling</dt><dd>The model asking your code to run a described function and return the result.</dd>
+</dl>
+<div class="mod-foot"></div>
+</section>
+
+<section class="module" id="sources" data-title="Sources and further reading" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Sources and further reading</h1>
+<p class="lede">This guide was written in November 2026 from the repo's notebooks, code and setup files. The course itself, the labs and the reported results are Ed Donner's; the explanations and exercises here are this guide's own.</p></header>
+<h2>The course</h2>
+<ul class="sources">
+  <li><a href="https://github.com/ed-donner/llm_engineering">ed-donner/llm_engineering</a> — the repo (MIT license)</li>
+  <li><a href="https://edwarddonner.com/2024/11/13/llm-engineering-resources/">Course resources</a> — slides and links</li>
+  <li><a href="https://edwarddonner.com/faq">Course FAQ</a></li>
+  <li><a href="https://edwarddonner.com/curriculum">Ed Donner's curriculum</a> — companion courses</li>
+</ul>
+<h2>Tools and libraries</h2>
+<ul class="sources">
+  <li><a href="https://docs.astral.sh/uv/">uv</a> · <a href="https://ollama.com">Ollama</a> · <a href="https://www.gradio.app/docs">Gradio</a> · <a href="https://docs.litellm.ai/">LiteLLM</a></li>
+  <li><a href="https://huggingface.co/docs/transformers">Transformers</a> · <a href="https://huggingface.co/docs/peft">PEFT</a> · <a href="https://huggingface.co/docs/transformers/quantization/bitsandbytes">bitsandbytes</a></li>
+  <li><a href="https://docs.trychroma.com/">Chroma</a> · <a href="https://modal.com/docs">Modal</a> · <a href="https://pushover.net/api">Pushover</a></li>
+  <li><a href="https://platform.openai.com/docs/guides/function-calling">Function calling</a> · <a href="https://platform.openai.com/docs/guides/structured-outputs">Structured outputs</a> · <a href="https://platform.openai.com/docs/guides/embeddings">Embeddings</a> — OpenAI</li>
+</ul>
+<h2>Papers and data</h2>
+<ul class="sources">
+  <li><a href="https://arxiv.org/abs/2106.09685">LoRA</a> — Hu et al., 2021 · <a href="https://arxiv.org/abs/2305.14314">QLoRA</a> — Dettmers et al., 2023</li>
+  <li><a href="https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023">Amazon Reviews 2023</a> — McAuley Lab</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

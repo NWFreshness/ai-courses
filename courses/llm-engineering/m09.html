@@ -1,0 +1,153 @@
+<section class="module" id="m8" data-title="Week 8: Autonomous agents" data-wire="var(--w8)" data-group="Applied">
+<div class="wire-band" style="--wire:var(--w8)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 8 · Module 8 of 9 · <code>week8/</code> · capstone finale</p>
+  <h1>The Price Is Right: an autonomous multi-agent system</h1>
+  <p class="lede">Week 8 assembles everything into one product. A fleet of agents scans deal feeds, estimates each item's true value with your fine-tuned model, a RAG-backed frontier model and a neural network, decides which deals are worth your attention, and pushes the best one to your phone. It runs on a timer behind a Gradio dashboard.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w8)">
+  <h2>By the end of this week you can</h2>
+  <ul>
+    <li>Deploy a fine-tuned open model as a serverless GPU service and call it from Python.</li>
+    <li>Combine several pricing models into an ensemble, including RAG over hundreds of thousands of products.</li>
+    <li>Use structured outputs to turn messy feed text into typed objects.</li>
+    <li>Build a planning agent that decides which tools to call, with memory so it doesn't repeat itself.</li>
+  </ul>
+</div>
+
+<h2>Notebook map</h2>
+<div class="tbl nbmap"><table>
+<thead><tr><th>Day</th><th>What gets built</th><th>Files</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Modal: run code on cloud GPUs; deploy the fine-tuned pricer; the <strong>specialist agent</strong></td><td><code>hello.py</code>, <code>pricer_ephemeral.py</code>, <code>pricer_service*.py</code>, <code>agents/specialist_agent.py</code></td></tr>
+<tr><td>2</td><td>A Chroma store of products; the RAG <strong>frontier agent</strong>; the <strong>neural network agent</strong>; the <strong>ensemble agent</strong></td><td><code>agents/frontier_agent.py</code>, <code>ensemble_agent.py</code>, <code>neural_network_agent.py</code></td></tr>
+<tr><td>3</td><td>The <strong>scanner agent</strong> (RSS deals, structured outputs) and the <strong>messaging agent</strong> (push notifications)</td><td><code>agents/scanner_agent.py</code>, <code>messaging_agent.py</code>, <code>deals.py</code></td></tr>
+<tr><td>4</td><td>The <strong>planning agent</strong>, then an autonomous version that chooses its own tool calls; the framework that runs it with memory</td><td><code>agents/autonomous_planning_agent.py</code>, <code>deal_agent_framework.py</code>, <code>memory.json</code></td></tr>
+<tr><td>5</td><td>The finished product: a Gradio dashboard that runs the framework on a timer</td><td><code>price_is_right.py</code></td></tr>
+</tbody></table></div>
+<p class="cost">Cost: Modal's free monthly credits are usually enough for the course if you let containers sleep; keeping one warm uses credits continuously. Frontier calls are cents. Pushover has a free trial and a small one-time fee after.</p>
+
+<h2>The architecture</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 300" role="img" aria-label="Agent architecture. The planning agent calls the scanner agent to get deals from RSS feeds, the ensemble agent to estimate each deal's value, and the messaging agent to notify the user. The ensemble combines a specialist agent on Modal, a frontier agent with RAG over Chroma, and a neural network agent.">
+  <rect x="250" y="16" width="180" height="56" rx="8" fill="var(--ink)"/><text x="340" y="42" text-anchor="middle" style="fill:var(--paper);font-size:14px;font-weight:600">Planning agent</text><text x="340" y="60" text-anchor="middle" style="fill:var(--paper);font-size:11px;opacity:.75">decides what to call next</text>
+  <rect x="20" y="120" width="160" height="56" rx="6" class="box"/><text x="100" y="146" text-anchor="middle" style="font-size:13px;font-weight:600">Scanner agent</text><text x="100" y="164" text-anchor="middle" class="muted" style="font-size:11px">RSS → structured deals</text>
+  <rect x="260" y="120" width="160" height="56" rx="6" style="fill:color-mix(in srgb,var(--w8) 18%,var(--paper));stroke:var(--w8);stroke-width:2"/><text x="340" y="146" text-anchor="middle" style="font-size:13px;font-weight:600">Ensemble agent</text><text x="340" y="164" text-anchor="middle" class="muted" style="font-size:11px">weighted estimate</text>
+  <rect x="500" y="120" width="160" height="56" rx="6" class="box"/><text x="580" y="146" text-anchor="middle" style="font-size:13px;font-weight:600">Messaging agent</text><text x="580" y="164" text-anchor="middle" class="muted" style="font-size:11px">push to your phone</text>
+  <rect x="150" y="226" width="120" height="56" rx="6" class="box"/><text x="210" y="250" text-anchor="middle" style="font-size:12px;font-weight:600">Specialist</text><text x="210" y="267" text-anchor="middle" class="muted" style="font-size:11px">Llama on Modal</text>
+  <rect x="280" y="226" width="120" height="56" rx="6" class="box"/><text x="340" y="250" text-anchor="middle" style="font-size:12px;font-weight:600">Frontier + RAG</text><text x="340" y="267" text-anchor="middle" class="muted" style="font-size:11px">5 similar products</text>
+  <rect x="410" y="226" width="120" height="56" rx="6" class="box"/><text x="470" y="250" text-anchor="middle" style="font-size:12px;font-weight:600">Neural network</text><text x="470" y="267" text-anchor="middle" class="muted" style="font-size:11px">Week 6 weights</text>
+  <path d="M290 72 C250 100 150 100 100 120" class="ln" marker-end="url(#arr8w)"/>
+  <path d="M340 72 V120" class="ln" marker-end="url(#arr8w)"/>
+  <path d="M390 72 C430 100 530 100 580 120" class="ln" marker-end="url(#arr8w)"/>
+  <path d="M300 176 C260 200 220 205 210 226 M340 176 V226 M380 176 C420 200 460 205 470 226" class="ln" style="stroke:var(--w8)"/>
+  <text x="668" y="234" text-anchor="end" style="font-size:12px;font-weight:600">0.1</text><text x="668" y="252" text-anchor="end" style="font-size:12px;font-weight:600">0.8</text><text x="668" y="270" text-anchor="end" style="font-size:12px;font-weight:600">0.1</text>
+  <text x="640" y="234" text-anchor="end" class="muted" style="font-size:12px">specialist</text><text x="640" y="252" text-anchor="end" class="muted" style="font-size:12px">frontier</text><text x="640" y="270" text-anchor="end" class="muted" style="font-size:12px">network</text><text x="668" y="216" text-anchor="end" class="muted" style="font-size:11px">weights</text>
+  <path id="p8a" d="M290 72 C250 100 150 100 100 118" fill="none"/><path id="p8b" d="M340 72 V118" fill="none"/><path id="p8c" d="M390 72 C430 100 530 100 580 118" fill="none"/>
+  <g class="live">
+    <circle r="5" fill="var(--w8)" stroke="var(--paper)" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="1;1;0" keyTimes="0;.85;1" dur="1.4s" begin="0s;a8.end"/><animateMotion dur="1.4s" begin="0s;a8.end" fill="freeze"><mpath href="#p8a"/></animateMotion></circle>
+    <circle r="5" fill="var(--w8)" stroke="var(--paper)" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="1;1;0" keyTimes="0;.85;1" dur="1.4s" begin="1.6s;a8.end+1.6s"/><animateMotion dur="1.4s" begin="1.6s;a8.end+1.6s" fill="freeze"><mpath href="#p8b"/></animateMotion></circle>
+    <circle r="5" fill="var(--w8)" stroke="var(--paper)" stroke-width="1.5" opacity="0"><animate attributeName="opacity" values="1;1;0" keyTimes="0;.85;1" dur="1.4s" begin="3.2s;a8.end+3.2s"/><animateMotion dur="1.4s" begin="3.2s;a8.end+3.2s" fill="freeze"><mpath href="#p8c"/></animateMotion></circle>
+    <rect width="0" height="0"><animate id="a8" attributeName="x" from="0" to="0" dur="5.4s" begin="0s;a8.end"/></rect>
+  </g>
+  <defs><marker id="arr8w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+</svg>
+<figcaption>Each agent is a small Python class with one job. The weights are the ensemble's, from <code>agents/ensemble_agent.py</code>.</figcaption>
+</figure>
+<p>"Agent" in this project mostly means a focused component with one responsibility and a log line when it acts, not a free-roaming AI. Only the planning agent makes open-ended decisions, and even it has exactly three tools. That's a useful design habit: keep autonomy where it adds value and make everything else ordinary, testable code.</p>
+
+<h2>Day 1: serving your model with Modal</h2>
+<p>Your Week 7 adapter needs a GPU to run. Modal lets you decorate a Python function or class, say which container image and GPU it needs, and run it in the cloud: once ("ephemeral") with <code>modal run</code>, or as a persistent service with <code>modal deploy</code>. The pricer service loads the 4-bit base Llama 3.2 3B, applies your adapter from the Hugging Face Hub at a pinned revision, and exposes a <code>price</code> method; the specialist agent simply calls it.</p>
+<figure class="code"><figcaption>The shape of a Modal GPU service</figcaption>
+<pre><code><span class="k">import</span> modal
+
+app = modal.App(<span class="s">"pricer-service"</span>)
+image = modal.Image.debian_slim().pip_install(<span class="s">"torch"</span>, <span class="s">"transformers"</span>, <span class="s">"bitsandbytes"</span>, <span class="s">"accelerate"</span>, <span class="s">"peft"</span>)
+
+<span class="k">@app.cls</span>(image=image, gpu=<span class="s">"T4"</span>, secrets=[modal.Secret.from_name(<span class="s">"huggingface-secret"</span>)])
+<span class="k">class</span> <span class="f">Pricer</span>:
+    <span class="k">@modal.enter</span>()
+    <span class="k">def</span> <span class="f">setup</span>(self):              <span class="c"># runs once per container: load base model + adapter</span>
+        ...
+    <span class="k">@modal.method</span>()
+    <span class="k">def</span> <span class="f">price</span>(self, description: str) -> float:
+        ...
+
+<span class="c"># terminal:  uv run modal deploy pricer_service2.py</span>
+<span class="c"># python:    Pricer = modal.Cls.from_name("pricer-service", "Pricer"); Pricer().price.remote("...")</span></code></pre></figure>
+<div class="note pitfall"><h4>Modal secrets have a name, a key and a value</h4>
+<p>The notebook warns that this confuses many people. The code looks up a secret <em>named</em> <code>huggingface-secret</code>, which must contain a key <code>HF_TOKEN</code> whose value is your token. A mismatch in any of the three fails at container start. Also expect the first run to take several minutes while the image builds, and a cold start of around half a minute after the service sleeps; setting <code>MIN_CONTAINERS = 1</code> keeps it warm at a continuous cost.</p></div>
+
+<h2>Day 2: RAG for prices, and an ensemble</h2>
+<p>Week 6 showed frontier models price well from world knowledge. Day 2 gives them more to go on: embed hundreds of thousands of training products with the local <code>all-MiniLM-L6-v2</code> model into Chroma, and for each new item retrieve the five most similar products with their known prices and include them in the prompt. Then the <strong>ensemble agent</strong> combines three estimates with fixed weights: 0.8 for the RAG frontier agent, 0.1 each for the specialist and the neural network.</p>
+<figure class="diagram">
+{{LEADERBOARD:8}}
+<figcaption>The final leaderboard from <code>week8/results.ipynb</code>. Adding retrieved comparable products drops the frontier model's error to about $30, and the ensemble edges just below it.</figcaption>
+</figure>
+<p>The final step is small (from $30.19 to $29.90), which is typical of ensembles: they mostly smooth out each model's worst misses. The bigger lesson is the jump from Week 6's zero-shot frontier model to the RAG version. <mark>Showing a model similar, labeled examples at inference time is a powerful alternative to training it.</mark></p>
+
+<h2>Day 3: scanning and messaging</h2>
+<p>The <strong>scanner agent</strong> reads deal RSS feeds, then asks a model to pick the most promising deals and rewrite each into a clean description with a clear price. Instead of asking for JSON in the prompt, as in Week 1, it uses <strong>structured outputs</strong>: you pass a Pydantic model as <code>response_format</code>, and the API guarantees the reply matches that schema.</p>
+<figure class="code"><figcaption>Structured outputs</figcaption>
+<pre><code><span class="k">from</span> pydantic <span class="k">import</span> BaseModel
+
+<span class="k">class</span> <span class="f">Deal</span>(BaseModel):
+    product_description: str
+    price: float
+    url: str
+
+<span class="k">class</span> <span class="f">DealSelection</span>(BaseModel):
+    deals: list[Deal]
+
+result = client.chat.completions.parse(model=MODEL, messages=messages, response_format=DealSelection)
+selection = result.choices[<span class="s">0</span>].message.parsed          <span class="c"># a DealSelection object, not a string</span></code></pre></figure>
+<p>The <strong>messaging agent</strong> sends a push notification through Pushover with the deal, its price, the estimated value and the link. You add a user key and an app token to <code>.env</code>.</p>
+
+<h2>Day 4: the planning agent</h2>
+<p>The notebook first builds the workflow with three pretend functions to test the logic, then swaps in the real ones. The autonomous planning agent gives a model three tools and a goal, and lets it decide the order:</p>
+<ul>
+  <li><code>scan_the_internet_for_bargains</code> calls the scanner agent.</li>
+  <li><code>estimate_true_value</code> calls the ensemble agent for one description.</li>
+  <li><code>notify_user_of_deal</code> calls the messaging agent.</li>
+</ul>
+<p>It's the same tool-calling loop you wrote in Week 2, with more consequential tools. The <strong>deal agent framework</strong> wraps it: it loads the list of deals already surfaced from <code>memory.json</code>, passes it to the planner so the same deal isn't sent twice, records the new one, and sets up logging so you can watch each agent work.</p>
+
+<h2>Day 5: the product</h2>
+<p><code>price_is_right.py</code> builds a Gradio dashboard on <code>gr.Blocks</code>: a table of surfaced deals, live agent logs, and a plot of the product vector space, with a timer that runs the framework periodically. Run it, leave it open, and deals arrive on your phone. The notebook's closing note points to a follow-on version in the author's other repo that rebuilds the planner with the OpenAI Agents SDK and MCP servers.</p>
+
+<div class="note field"><h4>Look at it as a harness engineer</h4>
+<p>This agent reads untrusted text (deal feeds that anyone can publish to) and has an outbound channel (notifications to you). It doesn't hold private data, so Simon Willison's "lethal trifecta" isn't complete, but add a tool that reads your email or accounts and it would be. The memory file is its only state, so a crash mid-run is harmless but two copies running at once could notify you twice. Harness Engineering <a href="../harness-engineering/#m8">Module 8</a> and <a href="../harness-engineering/#m9">Module 9</a> cover both.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Serve fine-tuned open models on serverless GPUs with Modal; pin the adapter revision and mind cold starts.</li>
+  <li>RAG with labeled examples sharply improved frontier-model pricing; an ensemble smooths the rest.</li>
+  <li>Structured outputs turn model replies into typed objects you can trust in code.</li>
+  <li>Give autonomy to one planner with a few well-defined tools; keep the other agents as focused, testable components with memory around them.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="3"><p class="q-prompt">What did the frontier agent add in Week 8 that cut its error from about $45 to about $30?</p>
+<ol><li><button>Fine-tuning on the product data</button></li><li><button>A higher reasoning effort</button></li><li><button>A longer system prompt</button></li><li><button>Five similar products and their prices, retrieved from Chroma, in the prompt</button></li></ol>
+<p class="q-why">Retrieval-augmented pricing: comparable labeled examples at inference time.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">Why does the scanner agent use <code>response_format</code> with a Pydantic model?</p>
+<ol><li><button>It makes the model faster</button></li><li><button>The reply is guaranteed to match the schema, so it parses into a typed object</button></li><li><button>RSS feeds require it</button></li><li><button>It reduces token usage</button></li></ol>
+<p class="q-why">Structured outputs replace "please reply in JSON" with a schema the API enforces.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">The Modal container fails to start with a Hugging Face authentication error. What do you check first?</p>
+<ol><li><button>That a secret named <code>huggingface-secret</code> exists with key <code>HF_TOKEN</code> and a valid token value</button></li><li><button>The GPU type</button></li><li><button>Your OpenAI key</button></li><li><button>The Gradio version</button></li></ol>
+<p class="q-why">Name, key and value all have to match what the code looks up; the notebook calls this out as a common trap.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w8)"><h2>Exercise: point it at something you care about</h2>
+<p>Keep the architecture and swap the domain. Ideas: a scanner over vendor security-advisory feeds that estimates "how much does this affect me" from your inventory and notifies you of the top one; or a scanner over job postings that scores fit against your résumé. Keep the planner to three tools, add a memory file, and write down which inputs are untrusted before you add any tool that reads private data.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week8">week8/</a> — notebooks, agents and the app</li>
+  <li><a href="https://modal.com/docs">Modal documentation</a></li>
+  <li><a href="https://platform.openai.com/docs/guides/structured-outputs">Structured outputs</a> — OpenAI</li>
+  <li><a href="https://pushover.net/api">Pushover API</a></li>
+</ul>
+<div class="mod-foot"></div>
+</section>

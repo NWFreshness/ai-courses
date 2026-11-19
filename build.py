@@ -1,84 +1,175 @@
-import pathlib, re
-src = pathlib.Path(__file__).parent / "src"
-mods = [
- ("m1","What a harness is","var(--w1)"),("m2","The agent loop","var(--w2)"),
- ("m3","Tools: the action interface","var(--w3)"),("m4","Context engineering","var(--w4)"),
- ("m5","Guides and sensors","var(--w5)"),("m6","Long-running agents","var(--w6)"),
- ("m7","Multi-agent orchestration","var(--w7)"),("m8","Safety, sandboxing, permissions","url(#stripe)"),
- ("m9","Durability and human-in-the-loop","var(--w9)"),("m10","Observability and evals","var(--w10)"),
- ("m11","Evolving the harness","var(--w11)"),("m12","Capstone: build Sentinel","url(#multi)"),
-]
-W,H = 1000, 610
-parts = [f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" role="group">',
- '<defs><pattern id="stripe" patternUnits="userSpaceOnUse" width="12" height="12" patternTransform="rotate(45)">'
- '<rect width="6" height="12" fill="var(--w8)"/><rect x="6" width="6" height="12" fill="var(--w8b)"/></pattern>'
- '<linearGradient id="multi" gradientUnits="userSpaceOnUse" x1="190" y1="0" x2="620" y2="0">'
- '<stop offset="0" stop-color="var(--w2)"/><stop offset=".33" stop-color="var(--w4)"/><stop offset=".66" stop-color="var(--w6)"/><stop offset="1" stop-color="var(--w10)"/></linearGradient></defs>']
-n=len(mods)
-strands=[]; terms=[]; signals=[]
-for i,(mid,title,color) in enumerate(mods):
-    sy = 262 + i*7.5
-    ty = 34 + i*49
-    d = f"M190 {sy} H430 C530 {sy} 520 {ty} 612 {ty} H622"
-    strands.append(f'<path class="strand" id="st{i}" d="{d}" style="stroke:{color}"/>')
-    signals.append(f'<circle class="signal" r="4" style="fill:var(--paper);stroke:var(--ink);stroke-width:1.5" opacity="0">'
-        f'<animateMotion dur="8s" begin="{2.2 + i*0.62:.2f}s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.35;1" calcMode="linear"><mpath href="#st{i}"/></animateMotion>'
-        f'<animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;.03;.32;.36;1" dur="8s" begin="{2.2 + i*0.62:.2f}s" repeatCount="indefinite"/></circle>')
-    terms.append(f'<a href="#{mid}" data-i="{i}" aria-label="Module {i+1}: {title}"><rect class="term" x="622" y="{ty-19}" width="360" height="38" rx="4"/>'
-                 f'<text x="640" y="{ty+6}"><tspan style="font-variant-numeric:tabular-nums" class="muted">{i+1:>2}</tspan>  {title}</text></a>')
-parts += strands
-# cable ties
-for x in (262, 352):
-    parts.append(f'<rect x="{x}" y="252" width="10" height="106" rx="3" fill="var(--ink)"/>')
-parts.append('<rect x="20" y="236" width="170" height="138" rx="8" fill="var(--ink)"/>'
-             '<text x="105" y="300" text-anchor="middle" style="fill:var(--paper);font-size:26px;font-weight:700">Model</text>'
-             '<text x="105" y="326" text-anchor="middle" style="fill:var(--paper);font-size:14px;opacity:.75">the part you rent</text>')
-parts.append('<text x="300" y="392" text-anchor="middle" class="muted" style="font-size:14px">the harness: everything else</text>')
-parts += terms
-parts += signals
-parts.append('</svg>')
-loom = "\n".join(parts)
-files = ["00-head.html","m00.html"] + [f"m{i:02d}.html" for i in range(1,14)] + ["99-tail.html"]
-html = "".join((src/f).read_text() for f in files)
+"""Build every course in courses/ plus the hub page into site/.
 
-# ---- static nav + phone index from the sections themselves
-secs = re.findall(r'<section class="module" id="([^"]+)" data-title="([^"]+)" data-wire="([^"]+)"([^>]*)>', html)
-nav=[]; last=None; mob=[]
-for sid,title,wire,rest in secs:
-    grp = re.search(r'data-group="([^"]+)"', rest).group(1)
-    cls = "striped" if "data-stripe" in rest else ("multi" if "data-multi" in rest else "")
-    if not re.match(r"m\d+$", sid): cls = (cls+" ref").strip()
-    if grp != last:
-        nav.append(f'<li class="grp" aria-hidden="true">{grp}</li>'); last = grp
-    num = re.match(r"m(\d+)$", sid)
-    label = (num.group(1)+". " if num else "") + title
-    nav.append(f'<li><a href="#{sid}" data-mod="{sid}" class="{cls}" style="--wire:{wire}"><span>{label}</span><span class="done" aria-hidden="true">✓</span></a></li>')
-    if num:
-        mob.append(f'<li><a href="#{sid}" data-mod="{sid}" class="{cls}" style="--wire:{wire};--i:{len(mob)}"><span>{label}</span><span class="done" aria-hidden="true">✓</span></a></li>')
-html = html.replace("{{NAV}}", "".join(nav))
-mobile = '<ol class="mobile-index">' + "".join(mob) + '</ol>'
-html = html.replace("{{LOOM}}", loom + "</div>" + mobile + "<div hidden>")
-# ---- diagrams: drawable connector lines
-def add_pl(m):
-    fig = m.group(0)
-    return re.sub(r'<(path|line)((?:(?!>).)*?class="ln")', r'<\1 pathLength="1"\2', fig)
-html = re.sub(r'<figure class="diagram">.*?</figure>', add_pl, html, flags=re.S)
-# ---- diagrams: swipeable wrapper on phones
-html = re.sub(r'(<figure class="diagram">)\s*(<svg.*?</svg>)', r'\1\n<p class="diagram-hint">Swipe sideways to see the whole diagram.</p><div class="diagram-scroll">\2</div>', html, flags=re.S)
+    python3 build.py
 
+Each course folder holds a course.json and its module fragments (m00.html, m01.html, ...).
+The shared page shell lives in engine/. Output: site/index.html and site/<slug>/index.html.
+"""
+import json, pathlib, re, html as htmlmod
+
+ROOT = pathlib.Path(__file__).parent
+ENGINE = ROOT / "engine"
+SITE = ROOT / "site"
+
+
+# ---------------------------------------------------------------- heroes
+def hero_loom(cfg):
+    """Harness Engineering: one wire per module, fanning out from the model."""
+    mods = cfg["hero_modules"]
+    W, H = 1000, 610
+    parts = [f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" role="group">',
+             '<defs><pattern id="stripe" patternUnits="userSpaceOnUse" width="12" height="12" patternTransform="rotate(45)">'
+             '<rect width="6" height="12" fill="var(--w8)"/><rect x="6" width="6" height="12" fill="var(--w8b)"/></pattern>'
+             '<linearGradient id="multi" gradientUnits="userSpaceOnUse" x1="190" y1="0" x2="620" y2="0">'
+             '<stop offset="0" stop-color="var(--w2)"/><stop offset=".33" stop-color="var(--w4)"/><stop offset=".66" stop-color="var(--w6)"/><stop offset="1" stop-color="var(--w10)"/></linearGradient></defs>']
+    strands, terms, signals = [], [], []
+    for i, (mid, title, color) in enumerate(mods):
+        sy, ty = 262 + i * 7.5, 34 + i * 49
+        d = f"M190 {sy} H430 C530 {sy} 520 {ty} 612 {ty} H622"
+        strands.append(f'<path class="strand" id="st{i}" d="{d}" style="stroke:{color}"/>')
+        b = f"{2.2 + i * 0.62:.2f}"
+        signals.append(f'<circle class="signal" r="4" style="fill:var(--paper);stroke:var(--ink);stroke-width:1.5" opacity="0">'
+                       f'<animateMotion dur="8s" begin="{b}s" repeatCount="indefinite" keyPoints="0;1;1" keyTimes="0;.35;1" calcMode="linear"><mpath href="#st{i}"/></animateMotion>'
+                       f'<animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;.03;.32;.36;1" dur="8s" begin="{b}s" repeatCount="indefinite"/></circle>')
+        terms.append(f'<a href="#{mid}" data-i="{i}" aria-label="Module {i+1}: {title}"><rect class="term" x="622" y="{ty-19}" width="360" height="38" rx="4"/>'
+                     f'<text x="640" y="{ty+6}"><tspan style="font-variant-numeric:tabular-nums" class="muted">{i+1:>2}</tspan>  {title}</text></a>')
+    parts += strands
+    for x in (262, 352):
+        parts.append(f'<rect x="{x}" y="252" width="10" height="106" rx="3" fill="var(--ink)"/>')
+    parts.append('<rect x="20" y="236" width="170" height="138" rx="8" fill="var(--ink)"/>'
+                 '<text x="105" y="300" text-anchor="middle" style="fill:var(--paper);font-size:26px;font-weight:700">Model</text>'
+                 '<text x="105" y="326" text-anchor="middle" style="fill:var(--paper);font-size:14px;opacity:.75">the part you rent</text>')
+    parts.append('<text x="300" y="392" text-anchor="middle" class="muted" style="font-size:14px">the harness: everything else</text>')
+    parts += terms + signals + ['</svg>']
+    mob = "".join(f'<li><a href="#{m}" data-mod="{m}" class="{"striped" if "stripe" in c else ("multi" if "multi" in c else "")}" '
+                  f'style="--wire:{c if c.startswith("var") else "var(--ink)"};--i:{i}"><span>{i+1}. {t}</span><span class="done" aria-hidden="true">✓</span></a></li>'
+                  for i, (m, t, c) in enumerate(mods))
+    return "\n".join(parts) + '</div><ol class="mobile-index">' + mob + '</ol><div hidden>'
+
+
+def hero_tokens(cfg):
+    """LLM Engineering: the course as a model's streamed completion, one token per week."""
+    prompt = htmlmod.escape(cfg["hero_prompt"])
+    chips = []
+    for i, (mid, label, color, tag) in enumerate(cfg["hero_modules"]):
+        chips.append(f'<a class="tok" href="#{mid}" style="--tc:{color};--i:{i}" data-mod="{mid}">'
+                     f'<small>{tag}</small><span>{htmlmod.escape(label)}</span><i class="done" aria-hidden="true">✓</i></a>')
+    return (f'<div class="token-stream" aria-label="Course map: select a week to open it.">'
+            f'<p class="ts-prompt"><span class="ts-role">prompt</span>{prompt}</p>'
+            f'<p class="ts-out"><span class="ts-role">completion</span>{"".join(chips)}<span class="caret" aria-hidden="true"></span></p></div>')
+
+
+HEROES = {"loom": hero_loom, "tokens": hero_tokens}
+
+
+# ---------------------------------------------------------------- charts
+def leaderboard(cfg, stage):
+    """Horizontal bar chart of the published Price Is Right results, up to a given week."""
+    rows = [r for r in cfg["leaderboard"] if r["week"] <= stage]
+    rows = sorted(rows, key=lambda r: -r["error"])
+    top = max(r["error"] for r in rows)
+    W, rowh, x0, x1 = 540, 28, 210, 460
+    H = 40 + rowh * len(rows) + 30
+    out = [f'<svg class="chart" viewBox="0 0 {W} {H}" role="img" aria-label="Average prediction error in dollars for each approach, lower is better.">',
+           f'<text x="{x0}" y="22" class="muted" style="font-size:14px">average error in dollars, lower is better</text>']
+    for i, r in enumerate(rows):
+        y = 36 + i * rowh
+        w = (x1 - x0) * r["error"] / top
+        new = r["week"] == stage
+        col = {"baseline": "var(--muted)", "human": "var(--ink)", "nn": "var(--w3)", "frontier": "var(--w1)",
+               "finetune": "var(--w7)", "agent": "var(--w8)"}[r["kind"]]
+        label = htmlmod.escape(r["name"])
+        out.append(f'<g><text x="{x0-10}" y="{y+18}" text-anchor="end" style="font-size:15px{";font-weight:700" if new else ""}">{label}</text>'
+                   f'<rect class="bar" x="{x0}" y="{y+3}" width="{w:.1f}" height="{rowh-8}" rx="3" style="fill:{col};opacity:{1 if new else .55}"/>'
+                   f'<text x="{x0 + w + 8:.1f}" y="{y+18}" style="font-size:14px;font-variant-numeric:tabular-nums">${r["error"]:.2f}</text></g>')
+    out.append('</svg>')
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------- page assembly
 attr_re = re.compile(r'\s(fill|stroke|stop-color)="((?:var|color-mix)\([^"]*\))"')
+
+
 def fix_tag(m):
+    """CSS variables are unreliable in SVG presentation attributes; move them into style."""
     tag = m.group(0)
     moved = attr_re.findall(tag)
-    if not moved: return tag
+    if not moved:
+        return tag
     tag = attr_re.sub('', tag)
-    decl = ";".join(f"{k}:{v}" for k,v in moved)
+    decl = ";".join(f"{k}:{v}" for k, v in moved)
     if ' style="' in tag:
-        tag = tag.replace(' style="', f' style="{decl};', 1)
-    else:
-        tag = re.sub(r'(/?>)$', f' style="{decl}"\\1', tag)
-    return tag
-html = re.sub(r'<(?:rect|circle|path|stop|line|ellipse|polygon|text)\b[^>]*>', fix_tag, html)
-out = pathlib.Path(__file__).parent / "index.html"
-out.write_text(html)
-print(out, len(html))
+        return tag.replace(' style="', f' style="{decl};', 1)
+    return re.sub(r'(/?>)$', f' style="{decl}"\\1', tag)
+
+
+def build_course(folder):
+    cfg = json.loads((folder / "course.json").read_text())
+    body = "".join((folder / f).read_text() for f in sorted(p.name for p in folder.glob("m*.html")))
+    head = (ENGINE / "head.html").read_text()
+    css = (folder / "course.css").read_text() if (folder / "course.css").exists() else ""
+    public = {k: cfg[k] for k in ("slug", "title", "storage")}
+    for k, v in {"{{TITLE}}": cfg["title"], "{{SHORT}}": cfg["short"], "{{KIND}}": cfg["kind"],
+                 "{{SUBTITLE}}": cfg["subtitle"], "{{COURSE_CSS}}": css,
+                 "{{COURSE_JSON}}": json.dumps(public)}.items():
+        head = head.replace(k, v)
+    page = head + body + (ENGINE / "tail.html").read_text()
+
+    # static navigation from the sections themselves
+    secs = re.findall(r'<section class="module" id="([^"]+)" data-title="([^"]+)" data-wire="([^"]+)"([^>]*)>', page)
+    nav, last = [], None
+    for sid, title, wire, rest in secs:
+        grp = re.search(r'data-group="([^"]+)"', rest).group(1)
+        cls = "striped" if "data-stripe" in rest else ("multi" if "data-multi" in rest else "")
+        if not re.match(r"m\d+$", sid):
+            cls = (cls + " ref").strip()
+        if grp != last:
+            nav.append(f'<li class="grp" aria-hidden="true">{grp}</li>')
+            last = grp
+        num = re.match(r"m(\d+)$", sid)
+        label = (num.group(1) + ". " if num else "") + title
+        nav.append(f'<li><a href="#{sid}" data-mod="{sid}" class="{cls}" style="--wire:{wire}"><span>{label}</span>'
+                   f'<span class="done" aria-hidden="true">✓</span></a></li>')
+    page = page.replace("{{NAV}}", "".join(nav))
+    page = page.replace("{{HERO}}", HEROES[cfg["hero"]](cfg))
+    page = re.sub(r"\{\{LEADERBOARD:(\d+)\}\}", lambda m: leaderboard(cfg, int(m.group(1))), page)
+
+    # diagrams: drawable connector lines, swipe on phones
+    page = re.sub(r'<figure class="diagram">.*?</figure>',
+                  lambda m: re.sub(r'<(path|line)((?:(?!>).)*?class="ln")', r'<\1 pathLength="1"\2', m.group(0)), page, flags=re.S)
+    page = re.sub(r'(<figure class="diagram">)\s*(<svg.*?</svg>)',
+                  r'\1\n<p class="diagram-hint">Swipe sideways to see the whole diagram.</p><div class="diagram-scroll">\2</div>', page, flags=re.S)
+    page = re.sub(r'<(?:rect|circle|path|stop|line|ellipse|polygon|text)\b[^>]*>', fix_tag, page)
+
+    out = SITE / cfg["slug"] / "index.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(page)
+    core = len([s for s in secs if re.match(r"m\d+$", s[0])])
+    print(f"  {out.relative_to(ROOT)}  {len(page):,} bytes, {core} modules")
+    return cfg, core, [(s[0], s[1]) for s in secs if re.match(r"m\d+$", s[0])]
+
+
+def build_hub(courses):
+    tpl = (ROOT / "hub" / "index.html").read_text()
+    data = [{"slug": c["slug"], "title": c["title"], "storage": c["storage"], "modules": n,
+             "titles": dict(titles)} for c, n, titles in courses]
+    cards = []
+    for c, n, _ in courses:
+        cards.append(f'<li class="course" data-slug="{c["slug"]}" style="--accent:{c["accent"]}">'
+                     f'<a href="{c["slug"]}/"><span class="motif motif-{c["hero"]}" aria-hidden="true">{c["motif"]}</span>'
+                     f'<span class="c-body"><b>{c["title"]}</b><span class="c-blurb">{c["blurb"]}</span>'
+                     f'<span class="c-meta">{n} modules · {c["time"]}</span>'
+                     f'<span class="c-prog"><i></i></span><span class="c-status"></span></span></a></li>')
+    page = tpl.replace("{{CARDS}}", "".join(cards)).replace("{{COURSES_JSON}}", json.dumps(data))
+    (SITE / "index.html").write_text(page)
+    (SITE / ".nojekyll").write_text("")
+    print(f"  site/index.html  hub with {len(courses)} courses")
+
+
+if __name__ == "__main__":
+    folders = sorted(p for p in (ROOT / "courses").iterdir() if (p / "course.json").exists())
+    order = {"harness-engineering": 1, "llm-engineering": 0}
+    folders.sort(key=lambda p: order.get(p.name, 9))
+    print("Building courses:")
+    built = [build_course(f) for f in folders]
+    build_hub(built)

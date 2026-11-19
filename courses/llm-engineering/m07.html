@@ -1,0 +1,110 @@
+<section class="module" id="m6" data-title="Week 6: Data and baselines" data-wire="var(--w6)" data-group="Applied">
+<div class="wire-band" style="--wire:var(--w6)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 6 · Module 6 of 9 · <code>week6/</code> · capstone part 1</p>
+  <h1>The Price Is Right: data, baselines and frontier models</h1>
+  <p class="lede">The capstone starts here and runs to the end of the course: a model that estimates a product's price from its description. Week 6 is the data-science half of LLM engineering: curate a dataset, clean it with an LLM, define an honest evaluation, and see how far traditional machine learning, a neural network and frontier models get before any fine-tuning.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w6)">
+  <h2>By the end of this week you can</h2>
+  <ul>
+    <li>Curate a training set from a large public dataset, with explicit filters and a balanced distribution.</li>
+    <li>Use an LLM in batch to rewrite messy records into a consistent format, cheaply.</li>
+    <li>Define one evaluation and run every approach through it, starting with simple baselines.</li>
+    <li>Explain how traditional ML, neural networks and zero-shot frontier models compare on this task.</li>
+  </ul>
+</div>
+
+<h2>Notebook map</h2>
+<div class="tbl nbmap"><table>
+<thead><tr><th>File</th><th>What happens</th><th>Look for</th></tr></thead>
+<tbody>
+<tr><td><code>day1.ipynb</code></td><td>Data curation: load product metadata from eight Amazon categories, parse, filter, inspect distributions, push to the Hugging Face Hub</td><td>The filters in <code>pricer/parser.py</code> and the price histogram</td></tr>
+<tr><td><code>day2.ipynb</code></td><td>Pre-processing: rewrite every product into a short, standard description with an LLM, run as batches</td><td>The lite/full switch and the <code>Batch</code> class</td></tr>
+<tr><td><code>day3.ipynb</code></td><td>Evaluation harness and baselines: constant, linear regression, bag-of-words, random forest, XGBoost</td><td><code>pricer/evaluator.py</code>: one test for every model</td></tr>
+<tr><td><code>day4.ipynb</code></td><td>A neural network in PyTorch, then frontier models asked to price items with no training</td><td>How much world knowledge is worth</td></tr>
+<tr><td><code>day5.ipynb</code></td><td>Fine-tuning a small frontier model through OpenAI's API (watch, don't run; see below)</td><td>The JSONL training format</td></tr>
+<tr><td><code>redemption_*.ipynb</code>, <code>results.ipynb</code></td><td>A deeper residual neural network, trained for hours or downloaded; the results chart</td><td>How a better architecture changes the ranking</td></tr>
+</tbody></table></div>
+<p class="cost">Cost: $0 if you load the author's preprocessed datasets from the Hub; under $1 to preprocess the 20,000-item lite set yourself; under $30 for the 800,000-item full set (the author's figures, using Groq).</p>
+
+<h2>Day 1: curating the data</h2>
+<p>The raw material is product metadata from the public <a href="https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023">Amazon Reviews 2023</a> dataset: automotive, electronics, office products, tools and home improvement, cell phones and accessories, toys and games, appliances, and musical instruments. Every item is parsed into a title, a scrubbed description, a category, a weight and a price, and kept only if it passes explicit rules: in this repo, a price between $0.50 and $999.49 and at least 600 characters of text.</p>
+<p>Then you look hard at what's left: how prices and text lengths are distributed, which categories dominate, whether cheap items swamp the rest. The author's framing is that this "quality time with data quality" often matters more than later hyperparameter tuning.</p>
+<div class="note principle"><h4>Curation is a design decision</h4>
+<p>Every filter changes what the model can learn. Too few expensive items and it will never predict a high price; a category that dominates will bias every estimate. Write your rules down, check the distributions after each, and keep the test set drawn from the same distribution as training.</p></div>
+
+<h2>Day 2: let an LLM clean the records</h2>
+<p>Product text is inconsistent: part numbers, marketing fluff, missing fields. Day 2 asks a fast, cheap model to rewrite each item into a fixed format (a short title, a category, a brand, a one-sentence description and key details), without part numbers. With thousands of items you don't loop one call at a time: the <code>Batch</code> class groups items by the thousand and uses a provider's batch API, which processes requests asynchronously at a lower price, then collects the results. The same rewriting idea appeared in Week 5's document pre-processing.</p>
+<p>The notebook offers two dataset sizes with one switch: a lite version with 20,000 training items and a full version with 800,000. Use lite while you learn.</p>
+
+<h2>Day 3: one evaluation for everything</h2>
+<p>Before any model, the repo builds a <code>Tester</code>: given any function that takes an item and returns a price, it runs that function over a sample of test items (200 by default), records the absolute error in dollars for each, colors each result by how close it was, plots predictions against truth, and reports the average error. Every approach from here to Week 8 goes through the same test, which is what makes the leaderboard below meaningful.</p>
+<figure class="code"><figcaption>Any pricer is just a function</figcaption>
+<pre><code><span class="k">def</span> <span class="f">constant_pricer</span>(item):
+    <span class="k">return</span> training_average                 <span class="c"># the baseline every model must beat</span>
+
+<span class="k">def</span> <span class="f">frontier_pricer</span>(item):
+    r = client.chat.completions.create(model=MODEL, messages=[
+        {<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: <span class="s">"Estimate the price of the product. Reply with a number only."</span>},
+        {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: item.summary}])
+    <span class="k">return</span> parse_dollars(r.choices[<span class="s">0</span>].message.content)
+
+evaluate(constant_pricer, test)
+evaluate(frontier_pricer, test)</code></pre></figure>
+<p>Then the baselines, from the simplest upward:</p>
+<ul>
+  <li><strong>Constant</strong>: always guess the average price. Anything worse than this is broken.</li>
+  <li><strong>Linear regression</strong> on a few hand-made features such as weight and text length.</li>
+  <li><strong>Bag of words + linear regression</strong>: count words and learn a price per word.</li>
+  <li><strong>Random forest</strong>: many decision trees, each trained on a random slice, averaged.</li>
+  <li><strong>XGBoost</strong>: trees built one after another, each correcting the previous ones' errors.</li>
+</ul>
+<p>There's also a human baseline: the author priced items himself.</p>
+
+<h2>Day 4: neural networks and frontier models</h2>
+<p>A small feed-forward neural network in PyTorch beats the traditional models. Then frontier models are asked to price items with no training at all, using only what they learned about products during pre-training, and the best of them beat everything else so far. That's the key lesson of the week: <mark>for tasks that rely on world knowledge, a frontier model with a good prompt is a formidable baseline</mark>.</p>
+<p>The optional "redemption" notebooks train a deeper residual network for several hours (or let you download the author's trained weights) and show a better architecture closing much of the gap.</p>
+
+<h2>Day 5: fine-tuning a frontier model</h2>
+<p>The notebook prepares training examples as JSONL, uploads them, and fine-tunes a small OpenAI model through the API. The repo now marks this as one to <strong>watch rather than run</strong>: OpenAI no longer offers fine-tuning to new users, and the model fine-tuned in the video has been retired. The result is still instructive. The fine-tuned small model came out <em>worse</em> than the same model without fine-tuning, a reminder that fine-tuning a model that already knows a lot doesn't automatically help. Week 7 does fine-tuning where you control everything.</p>
+
+<h2>The leaderboard after Week 6</h2>
+<figure class="diagram">
+{{LEADERBOARD:6}}
+<figcaption>Average absolute error on the test sample, as reported in the repo's <code>week6/results.ipynb</code>. Your numbers will vary with the dataset size, sample and model versions. Weeks 7 and 8 add to this chart.</figcaption>
+</figure>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Curate deliberately: explicit filters, checked distributions, matching test data.</li>
+  <li>LLMs in batch mode are a cheap way to normalize messy records at scale.</li>
+  <li>Build one evaluation first and run every approach through it, starting from a constant baseline.</li>
+  <li>Frontier models' world knowledge makes them strong zero-shot baselines; fine-tuning isn't automatically an improvement.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="0"><p class="q-prompt">Why start with a model that always predicts the average price?</p>
+<ol><li><button>It sets the bar: any approach that can't beat it isn't learning anything useful</button></li><li><button>It's the most accurate approach for prices</button></li><li><button>The evaluator requires it</button></li><li><button>It's needed to train the others</button></li></ol>
+<p class="q-why">Baselines make results meaningful. A complicated model that loses to the average is broken, however impressive it looks.</p></div>
+<div class="q" data-correct="2"><p class="q-prompt">Why use a provider's batch API to rewrite 800,000 records?</p>
+<ol><li><button>Batch calls use a better model</button></li><li><button>It's the only way to get structured output</button></li><li><button>Requests run asynchronously at a lower price, and you don't need answers instantly</button></li><li><button>It avoids needing an API key</button></li></ol>
+<p class="q-why">Batch processing trades latency for cost, which is the right trade for offline data preparation.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">Frontier models with no training beat random forests and XGBoost here. What's the best explanation?</p>
+<ol><li><button>They memorized the test set</button></li><li><button>The traditional models were trained incorrectly</button></li><li><button>Language models are always better at regression</button></li><li><button>Pre-training gave them broad knowledge of products and prices that the small models can't learn from this data alone</button></li></ol>
+<p class="q-why">The task rewards world knowledge. That's why the course later combines frontier models with retrieval and specialist models rather than replacing them.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w6)"><h2>Exercise: beat a baseline honestly</h2>
+<p>Load the lite dataset. Pick one traditional model and try to beat the author's number with feature engineering only (for example the brand, or the category combined with weight). Then try one prompt change for a frontier model, such as a single priced example in the prompt. Run each through the same <code>Tester</code> and write down which change helped and by how much.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week6">week6/</a> — notebooks and the <code>pricer</code> package</li>
+  <li><a href="https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023">Amazon Reviews 2023</a> — McAuley Lab, Hugging Face</li>
+  <li><a href="https://huggingface.co/datasets/ed-donner/items_lite">items_lite</a> and <a href="https://huggingface.co/datasets/ed-donner/items_full">items_full</a> — the author's preprocessed datasets</li>
+  <li><a href="https://xgboost.readthedocs.io/">XGBoost documentation</a></li>
+</ul>
+<div class="mod-foot"></div>
+</section>

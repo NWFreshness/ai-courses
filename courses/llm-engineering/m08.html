@@ -1,0 +1,131 @@
+<section class="module" id="m7" data-title="Week 7: Fine-tuning with QLoRA" data-wire="var(--w7)" data-group="Applied">
+<div class="wire-band" style="--wire:var(--w7)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 7 · Module 7 of 9 · <code>week7/</code> (labs run in Google Colab) · capstone part 2</p>
+  <h1>Fine-tuning an open-source model with QLoRA</h1>
+  <p class="lede">Week 7 takes a small open model, Meta's Llama 3.2 with 3 billion parameters, and trains it on the product data to predict prices. Out of the box it's the worst entry on the leaderboard. After QLoRA fine-tuning on the full dataset, it beats every frontier model from Week 6, on a model small enough to serve from a single cheap GPU.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w7)">
+  <h2>By the end of this week you can</h2>
+  <ul>
+    <li>Explain why full fine-tuning is expensive and how LoRA and QLoRA make it affordable.</li>
+    <li>Choose and reason about the main hyperparameters: rank, alpha, target modules, learning rate, epochs.</li>
+    <li>Turn a dataset into training prompts that teach the model exactly the output you want.</li>
+    <li>Train on a rented GPU, save the adapter to the Hugging Face Hub, and evaluate it with the Week 6 test.</li>
+  </ul>
+</div>
+
+<h2>Notebook map</h2>
+<p>As in Week 3, the files in <code>week7/</code> point to Colab notebooks. Save a copy of each to your Drive before running it.</p>
+<div class="tbl nbmap"><table>
+<thead><tr><th>File</th><th>Topic</th><th>Look for</th></tr></thead>
+<tbody>
+<tr><td><code>day1.ipynb</code></td><td>QLoRA: how quantization and low-rank adapters fit together</td><td>Memory footprint before and after quantization</td></tr>
+<tr><td><code>day2.ipynb</code></td><td>Prompt data and the base model</td><td>The training prompt format; how badly the base model does</td></tr>
+<tr><td><code>day3 and 4.ipynb</code></td><td>Training, part 1 and part 2</td><td>Training loss over time; checkpoints pushed to the Hub</td></tr>
+<tr><td><code>day5.ipynb</code></td><td>Evaluating the fine-tuned model</td><td>The same <code>Tester</code> as Week 6</td></tr>
+<tr><td><code>results.ipynb</code></td><td>The updated leaderboard</td><td>Where lite and full training land</td></tr>
+</tbody></table></div>
+<p class="cost">Cost: the lite dataset trains on a low-cost Colab GPU; the author reports spending about $10 on the full run, and suggests the cheaper dataset if you want to keep costs down. The prompt datasets are on the Hub as <code>items_prompts_lite</code> and <code>items_prompts_full</code>.</p>
+
+<h2>Why not just train the whole model?</h2>
+<p>Full fine-tuning updates every one of the model's parameters. For 3 billion parameters, that means holding the weights, their gradients and the optimizer's state in GPU memory at once, which is many times the size of the model and far beyond a single affordable GPU. Two ideas fix this.</p>
+<h3>LoRA: train a small add-on, not the model</h3>
+<p>Low-Rank Adaptation freezes the original weights and, beside chosen layers, adds two small matrices whose product acts as a correction to that layer. Only those small matrices are trained. The result is an <strong>adapter</strong> of a few megabytes to tens of megabytes that you load on top of the base model.</p>
+<h3>QLoRA: and keep the frozen model in 4-bit</h3>
+<p>Because the base weights are frozen, they can be stored quantized, in 4-bit as you did in Week 3, while the small adapters train at higher precision. That's QLoRA, and it's what lets a single T4 or similar GPU fine-tune a model of this size.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 680 220" role="img" aria-label="QLoRA: the base model's weight matrix stays frozen in 4-bit; beside it, two small trainable matrices A and B of rank r produce a correction that is added to the layer's output.">
+  <rect x="40" y="40" width="200" height="140" rx="6" style="fill:color-mix(in srgb,var(--muted) 14%,var(--paper));stroke:var(--muted);stroke-width:1.5"/>
+  <text x="140" y="100" text-anchor="middle" style="font-size:14px;font-weight:600">Base weights W</text>
+  <text x="140" y="120" text-anchor="middle" class="muted" style="font-size:12px">frozen, stored in 4-bit</text>
+  <rect x="300" y="40" width="34" height="140" rx="4" style="fill:color-mix(in srgb,var(--w7) 22%,var(--paper));stroke:var(--w7);stroke-width:2"/>
+  <text x="317" y="200" text-anchor="middle" style="font-size:13px;font-weight:600">A</text>
+  <rect x="360" y="93" width="140" height="34" rx="4" style="fill:color-mix(in srgb,var(--w7) 22%,var(--paper));stroke:var(--w7);stroke-width:2"/>
+  <text x="430" y="150" text-anchor="middle" style="font-size:13px;font-weight:600">B</text>
+  <text x="430" y="166" text-anchor="middle" class="muted" style="font-size:11px">rank r, e.g. 8–64</text>
+  <text x="270" y="116" text-anchor="middle" style="font-size:20px">+</text>
+  <path d="M500 110 H560" class="ln" marker-end="url(#arr7w)"/>
+  <rect x="560" y="80" width="110" height="60" rx="6" class="box"/><text x="615" y="106" text-anchor="middle" style="font-size:13px;font-weight:600">Output</text><text x="615" y="124" text-anchor="middle" class="muted" style="font-size:11px">W·x + B·A·x</text>
+  <text x="400" y="62" text-anchor="middle" style="font-size:12px;fill:var(--w7);font-weight:600">only these train</text>
+  <g class="live"><rect x="300" y="40" width="34" height="140" rx="4" fill="none" stroke="var(--w7)" stroke-width="4"><animate attributeName="opacity" values="0;.9;0" dur="2.2s" repeatCount="indefinite"/></rect><rect x="360" y="93" width="140" height="34" rx="4" fill="none" stroke="var(--w7)" stroke-width="4"><animate attributeName="opacity" values="0;.9;0" dur="2.2s" begin=".4s" repeatCount="indefinite"/></rect></g>
+  <defs><marker id="arr7w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+</svg>
+<figcaption>QLoRA in one picture: a frozen, quantized layer plus a small trainable correction.</figcaption>
+</figure>
+
+<h2>The hyperparameters that matter</h2>
+<div class="tbl"><table>
+<thead><tr><th>Setting</th><th>What it controls</th><th>Rule of thumb</th></tr></thead>
+<tbody>
+<tr><td>Rank <code>r</code></td><td>Width of the adapter matrices, and so how much it can learn</td><td>Start small (8–32); raise it if the model underfits</td></tr>
+<tr><td>Alpha</td><td>How strongly the adapter's correction is scaled</td><td>Commonly set to about twice the rank</td></tr>
+<tr><td>Target modules</td><td>Which layers get adapters</td><td>Usually the attention projections; adding the MLP layers increases capacity and cost</td></tr>
+<tr><td>Dropout</td><td>Randomly disables parts of the adapter in training, to reduce overfitting</td><td>Around 0.1</td></tr>
+<tr><td>Learning rate</td><td>Size of each update</td><td>Too high diverges, too low barely moves; use a warmup and decay schedule</td></tr>
+<tr><td>Epochs and batch size</td><td>How many passes over the data, and how many examples per step</td><td>Watch the loss; more data usually beats more epochs</td></tr>
+</tbody></table></div>
+<figure class="code"><figcaption>The shape of a QLoRA setup with Hugging Face PEFT</figcaption>
+<pre><code><span class="k">from</span> peft <span class="k">import</span> LoraConfig
+
+lora = LoraConfig(
+    r=<span class="s">32</span>, lora_alpha=<span class="s">64</span>, lora_dropout=<span class="s">0.1</span>,
+    target_modules=[<span class="s">"q_proj"</span>, <span class="s">"k_proj"</span>, <span class="s">"v_proj"</span>, <span class="s">"o_proj"</span>],   <span class="c"># attention projections in Llama</span>
+    task_type=<span class="s">"CAUSAL_LM"</span>,
+)
+base = AutoModelForCausalLM.from_pretrained(<span class="s">"meta-llama/Llama-3.2-3B"</span>,
+                                            quantization_config=quant_4bit, device_map=<span class="s">"auto"</span>)
+<span class="c"># A supervised fine-tuning trainer then wraps base + lora + the prompt dataset,</span>
+<span class="c"># logs the training loss, and pushes adapter checkpoints to the Hugging Face Hub.</span></code></pre></figure>
+<p>The exact values the course uses are in the Colab notebooks; treat the numbers above as a starting point for your own runs, not the course's settings.</p>
+
+<h2>Teach the format, not just the facts</h2>
+<p>Each training example is a prompt that ends exactly where the answer begins, followed by the price. That trains the model to produce a number in the expected place, which makes its output easy to parse. Day 2 shows how poorly the base model does before training, and the first leaderboard entry for this week confirms it: the 4-bit base model is worse than guessing the average.</p>
+<div class="note principle"><h4>Base model, not instruct</h4>
+<p>The course fine-tunes the base Llama 3.2 3B rather than a chat-tuned version. For a narrow task with a fixed output format, a base model trained on your prompt format doesn't need the chat template or conversational habits, and the format you train is the format you get.</p></div>
+
+<h2>Training, then the moment of truth</h2>
+<p>Training runs over two days of the course because it takes hours on the full dataset. Watch the training loss fall and level off, keep checkpoints on the Hub so a Colab disconnect doesn't lose your work, and then evaluate with the very same <code>Tester</code> from Week 6. Same test, same sample: the only thing that changed is the model.</p>
+<figure class="diagram">
+{{LEADERBOARD:7}}
+<figcaption>After Week 7, from the repo's <code>week7/results.ipynb</code>. Fine-tuned on the full dataset, the 3B model has the lowest error so far, ahead of every zero-shot frontier model.</figcaption>
+</figure>
+<p>Two lessons sit in that chart. Data volume mattered enormously: the same recipe on the lite dataset lands mid-table, while the full dataset takes first place. And specialization beats size for a narrow task: a 3-billion-parameter model, trained on the right data, outperforms frontier models that are vastly larger.</p>
+
+<div class="note pitfall"><h4>Evaluating on what you trained on</h4>
+<p>If test items leak into training, the numbers will look wonderful and mean nothing. Keep the test split separate from the start (Week 6 does), and don't tune hyperparameters against the final test set; hold out a validation set for that.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>LoRA trains small adapter matrices instead of the whole model; QLoRA keeps the frozen base in 4-bit, so one modest GPU is enough.</li>
+  <li>Rank, alpha, target modules, learning rate and data volume are the levers that matter most.</li>
+  <li>Train on prompts in exactly the format you'll use at inference time.</li>
+  <li>Evaluate with the unchanged test harness; here, a fine-tuned 3B model beat every frontier model on this task.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">In QLoRA, which parameters are updated during training?</p>
+<ol><li><button>All of the base model's weights, in 4-bit</button></li><li><button>Only the small low-rank adapter matrices</button></li><li><button>Only the embedding layer</button></li><li><button>The tokenizer's vocabulary</button></li></ol>
+<p class="q-why">The quantized base stays frozen. Training only touches the adapters, which is why memory needs are so low.</p></div>
+<div class="q" data-correct="2"><p class="q-prompt">The same QLoRA recipe on the lite dataset lands mid-table; on the full dataset it takes first place. What does that suggest?</p>
+<ol><li><button>The lite run used the wrong rank</button></li><li><button>The full run must have leaked test data</button></li><li><button>More, representative training data was the biggest lever</button></li><li><button>Fine-tuning only works with 800,000 examples</button></li></ol>
+<p class="q-why">The recipe was the same; the data volume changed. That's usually the strongest lever in fine-tuning.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why does each training example end with the prompt's answer marker followed by just the price?</p>
+<ol><li><button>So the model learns to produce a parseable number in exactly that position</button></li><li><button>Because longer examples cost more</button></li><li><button>The tokenizer can't handle sentences</button></li><li><button>To make the model conversational</button></li></ol>
+<p class="q-why">You get the format you train. A fixed, minimal answer format makes outputs easy to parse and evaluate.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w7)"><h2>Exercise: one change at a time</h2>
+<p>Train on the lite dataset twice, changing exactly one thing: the rank (say 16 versus 64) or the target modules (attention only versus attention plus MLP). Evaluate both with the <code>Tester</code>, and record error, training time and adapter size. Write two sentences on whether the change was worth its cost.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week7">week7/</a> — links to each Colab notebook</li>
+  <li><a href="https://arxiv.org/abs/2106.09685">LoRA: Low-Rank Adaptation of Large Language Models</a> — Hu et al., 2021</li>
+  <li><a href="https://arxiv.org/abs/2305.14314">QLoRA: Efficient Finetuning of Quantized LLMs</a> — Dettmers et al., 2023</li>
+  <li><a href="https://huggingface.co/docs/peft">PEFT documentation</a> — Hugging Face</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

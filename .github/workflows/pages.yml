@@ -25,13 +25,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build index.html from src/
+      - name: Build the hub and every course into site/
         run: python build.py
-      - name: Collect site
-        run: mkdir _site && cp index.html _site/ && touch _site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
