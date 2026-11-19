@@ -1,0 +1,231 @@
+<section class="module" id="m2" data-title="The agent loop" data-wire="var(--w2)" data-group="Foundations">
+<div class="wire-band" style="--wire:var(--w2)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 2 of 12 · 45 minutes · hands-on</p>
+  <h1>The agent loop: the heartbeat of every harness</h1>
+  <p class="lede">Strip away the frameworks and every agent is the same short loop: ask the model what to do, do it, show it what happened, repeat. The decisions you make in those few dozen lines (when to stop, how errors flow back, where hooks attach, how state is represented) set the ceiling for everything built on top.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w2)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Decide whether a task needs an agent at all, or a fixed workflow.</li>
+    <li>Write a correct tool-use loop from scratch, including parallel tool calls and error results.</li>
+    <li>Give the loop explicit stop conditions and budgets.</li>
+    <li>Add a middleware layer so later modules can attach checks without rewriting the loop.</li>
+  </ul>
+</div>
+
+<h2>First question: do you need an agent?</h2>
+<p>Anthropic's <em>Building effective agents</em> draws a line that still holds. <strong>Workflows</strong> orchestrate LLM calls through code paths you define. <strong>Agents</strong> let the model choose its own steps and tool calls. Workflows are cheaper, faster and easier to test. Agents are worth their cost only when you can't predict the steps in advance.</p>
+<div class="tbl"><table>
+<thead><tr><th>Pattern</th><th>Shape</th><th>Use when</th></tr></thead>
+<tbody>
+<tr><td>Prompt chaining</td><td>Fixed sequence, with checks between steps</td><td>The task decomposes cleanly and the same way every time</td></tr>
+<tr><td>Routing</td><td>Classify, then send to a specialized path</td><td>Inputs fall into distinct categories</td></tr>
+<tr><td>Parallelization</td><td>Fan out to independent calls, then merge or vote</td><td>Subtasks are independent, or you want several opinions</td></tr>
+<tr><td>Orchestrator–workers</td><td>An LLM splits the work dynamically and delegates</td><td>You can't know the subtasks ahead of time</td></tr>
+<tr><td>Evaluator–optimizer</td><td>One call generates, another critiques, loop</td><td>Clear evaluation criteria exist, and iteration helps</td></tr>
+<tr><td>Autonomous agent</td><td>Model plus tools in a loop until done</td><td>Open-ended, multi-step, unpredictable paths</td></tr>
+</tbody></table></div>
+<p>Production systems mix these freely. A support system might route deterministically, then hand one route to an agent. HumanLayer's <em>12-Factor Agents</em> makes the same point from experience: the agents that survive production are mostly ordinary software with LLM decisions inserted at specific points.</p>
+
+<h2>The loop, drawn</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 260" role="img" aria-label="The agent loop: context goes to the model, the model returns either a final answer or tool calls; the harness executes tools and appends results to context.">
+  <rect x="20" y="95" width="130" height="64" rx="6" class="box"/><text x="85" y="122" text-anchor="middle" style="font-size:14px;font-weight:600">Context</text><text x="85" y="141" text-anchor="middle" class="muted" style="font-size:12px">system + history</text>
+  <rect x="270" y="95" width="130" height="64" rx="6" fill="var(--ink)"/><text x="335" y="132" text-anchor="middle" style="fill:var(--paper);font-size:15px;font-weight:600">Model</text>
+  <rect x="520" y="20" width="140" height="56" rx="6" class="box"/><text x="590" y="44" text-anchor="middle" style="font-size:14px;font-weight:600">Final answer</text><text x="590" y="62" text-anchor="middle" class="muted" style="font-size:12px">stop, run Stop hooks</text>
+  <rect x="520" y="178" width="140" height="56" rx="6" class="box" style="stroke:var(--w2);stroke-width:2.5"/><text x="590" y="202" text-anchor="middle" style="font-size:14px;font-weight:600">Execute tools</text><text x="590" y="220" text-anchor="middle" class="muted" style="font-size:12px">pre/post hooks, sandbox</text>
+  <path d="M150 127 H270" class="ln" marker-end="url(#arr2)"/>
+  <path d="M400 115 C460 115 470 48 520 48" class="ln" marker-end="url(#arr2)"/>
+  <path d="M400 140 C460 140 470 206 520 206" class="ln" marker-end="url(#arr2)"/>
+  <path d="M520 220 C300 270 120 250 85 159" class="ln" style="stroke:var(--w2);stroke-width:2.5" marker-end="url(#arr2r)"/>
+  <text x="300" y="222" text-anchor="middle" style="font-size:12px">append tool results (including errors)</text>
+  <text x="510" y="38" text-anchor="end" class="muted" style="font-size:12px">end_turn</text><text x="462" y="212" text-anchor="end" class="muted" style="font-size:12px">tool_use</text>
+  <path id="loop2" d="M85 159 V127 H335 C460 127 470 206 590 206 C300 270 120 250 85 159" fill="none" stroke="none"/>
+  <g class="live"><circle r="7" fill="var(--w2)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="5s" repeatCount="indefinite" rotate="auto"><mpath href="#loop2"/></animateMotion></circle></g>
+  <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker>
+  <marker id="arr2r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--w2)"/></marker></defs>
+</svg>
+<figcaption>The model never touches the world directly. It emits structured requests; the harness decides whether and how to execute them.</figcaption>
+</figure>
+<p>That last sentence is the source of the harness's power. HumanLayer phrases it as "tools are just structured outputs": the model proposes, your code disposes. Every guardrail in this course lives in the space between the model's request and its execution.</p>
+
+<h2>A minimal, correct loop</h2>
+<p>Here's a complete loop against the Anthropic Messages API. It's deliberately framework-free so you can see every decision. The shape is the same for other providers.</p>
+<figure class="code"><figcaption>loop_v1.py: the smallest loop that's still correct</figcaption>
+<pre><code><span class="k">import</span> anthropic, json, pathlib, subprocess
+
+client = anthropic.Anthropic()
+MODEL = <span class="s">"claude-sonnet-5-5"</span>          <span class="c"># any tool-capable model</span>
+ROOT = pathlib.Path(<span class="s">"workspace"</span>).resolve()
+
+SYSTEM = <span class="s">"""You are a careful engineering agent working in a sandboxed repo.
+Work in small steps. Run tests before you say you are finished.
+When the task is complete, call the `finish` tool with a summary."""</span>
+
+TOOLS = [
+  {<span class="s">"name"</span>: <span class="s">"read_file"</span>,
+   <span class="s">"description"</span>: <span class="s">"Read a text file inside the workspace. Returns up to 400 lines starting at `offset`. Use offset to page through long files."</span>,
+   <span class="s">"input_schema"</span>: {<span class="s">"type"</span>: <span class="s">"object"</span>, <span class="s">"properties"</span>: {
+       <span class="s">"path"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>, <span class="s">"description"</span>: <span class="s">"Path relative to the workspace root"</span>},
+       <span class="s">"offset"</span>: {<span class="s">"type"</span>: <span class="s">"integer"</span>, <span class="s">"minimum"</span>: <span class="s">0</span>}},
+     <span class="s">"required"</span>: [<span class="s">"path"</span>]}},
+  {<span class="s">"name"</span>: <span class="s">"run"</span>,
+   <span class="s">"description"</span>: <span class="s">"Run a shell command in the workspace with a 120 s timeout. Returns exit code, then stdout/stderr (truncated)."</span>,
+   <span class="s">"input_schema"</span>: {<span class="s">"type"</span>: <span class="s">"object"</span>, <span class="s">"properties"</span>: {
+       <span class="s">"command"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>}}, <span class="s">"required"</span>: [<span class="s">"command"</span>]}},
+  {<span class="s">"name"</span>: <span class="s">"finish"</span>,
+   <span class="s">"description"</span>: <span class="s">"Call exactly once when the task is complete and verified."</span>,
+   <span class="s">"input_schema"</span>: {<span class="s">"type"</span>: <span class="s">"object"</span>, <span class="s">"properties"</span>: {
+       <span class="s">"summary"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>},
+       <span class="s">"verified_by"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>, <span class="s">"description"</span>: <span class="s">"The command whose output proves it works"</span>}},
+     <span class="s">"required"</span>: [<span class="s">"summary"</span>, <span class="s">"verified_by"</span>]}},
+]
+
+<span class="k">class</span> <span class="f">ToolError</span>(Exception): <span class="k">pass</span>
+
+<span class="k">def</span> <span class="f">safe_path</span>(p: str) -> pathlib.Path:
+    full = (ROOT / p).resolve()
+    <span class="k">if not</span> full.is_relative_to(ROOT):
+        <span class="k">raise</span> ToolError(<span class="s">f"{p} is outside the workspace. Use a relative path such as src/app.py."</span>)
+    <span class="k">return</span> full
+
+<span class="k">def</span> <span class="f">execute</span>(name: str, args: dict) -> str:
+    <span class="k">if</span> name == <span class="s">"read_file"</span>:
+        lines = safe_path(args[<span class="s">"path"</span>]).read_text().splitlines()
+        start = args.get(<span class="s">"offset"</span>, <span class="s">0</span>)
+        chunk = lines[start:start + <span class="s">400</span>]
+        more = <span class="s">f"\n[{len(lines) - start - len(chunk)} more lines; call again with offset={start + 400}]"</span> \
+               <span class="k">if</span> start + <span class="s">400</span> &lt; len(lines) <span class="k">else</span> <span class="s">""</span>
+        <span class="k">return</span> <span class="s">"\n"</span>.join(chunk) + more
+    <span class="k">if</span> name == <span class="s">"run"</span>:
+        r = subprocess.run(args[<span class="s">"command"</span>], shell=<span class="k">True</span>, cwd=ROOT, capture_output=<span class="k">True</span>,
+                           text=<span class="k">True</span>, timeout=<span class="s">120</span>)
+        out = (r.stdout + r.stderr)[-<span class="s">8000</span>:]            <span class="c"># keep the tail; errors live there</span>
+        <span class="k">return</span> <span class="s">f"exit={r.returncode}\n{out}"</span>
+    <span class="k">raise</span> ToolError(<span class="s">f"Unknown tool {name}"</span>)
+
+<span class="k">def</span> <span class="f">agent</span>(task: str, max_turns: int = <span class="s">40</span>, max_input_tokens: int = <span class="s">2_000_000</span>):
+    messages = [{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: task}]
+    spent = <span class="s">0</span>
+    <span class="k">for</span> turn <span class="k">in</span> range(max_turns):
+        resp = client.messages.create(model=MODEL, max_tokens=<span class="s">8000</span>, system=SYSTEM,
+                                      tools=TOOLS, messages=messages)
+        spent += resp.usage.input_tokens
+        messages.append({<span class="s">"role"</span>: <span class="s">"assistant"</span>, <span class="s">"content"</span>: resp.content})
+
+        <span class="k">if</span> resp.stop_reason != <span class="s">"tool_use"</span>:
+            <span class="c"># The model stopped without calling finish: nudge it rather than silently accepting.</span>
+            messages.append({<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>:
+                <span class="s">"If the task is done, verify it and call `finish`. Otherwise continue."</span>})
+            <span class="k">continue</span>
+
+        results = []
+        <span class="k">for</span> block <span class="k">in</span> resp.content:                <span class="c"># may contain several tool calls</span>
+            <span class="k">if</span> block.type != <span class="s">"tool_use"</span>:
+                <span class="k">continue</span>
+            <span class="k">if</span> block.name == <span class="s">"finish"</span>:
+                <span class="k">return</span> {<span class="s">"status"</span>: <span class="s">"done"</span>, **block.input, <span class="s">"turns"</span>: turn + <span class="s">1</span>}
+            <span class="k">try</span>:
+                out, err = execute(block.name, block.input), <span class="k">False</span>
+            <span class="k">except</span> (ToolError, OSError, subprocess.TimeoutExpired) <span class="k">as</span> e:
+                out, err = <span class="s">f"{type(e).__name__}: {e}"</span>, <span class="k">True</span>
+            results.append({<span class="s">"type"</span>: <span class="s">"tool_result"</span>, <span class="s">"tool_use_id"</span>: block.id,
+                            <span class="s">"content"</span>: out, <span class="s">"is_error"</span>: err})
+        messages.append({<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: results})   <span class="c"># all results, one message</span>
+
+        <span class="k">if</span> spent > max_input_tokens:
+            <span class="k">return</span> {<span class="s">"status"</span>: <span class="s">"budget_exceeded"</span>, <span class="s">"turns"</span>: turn + <span class="s">1</span>}
+    <span class="k">return</span> {<span class="s">"status"</span>: <span class="s">"turn_limit"</span>, <span class="s">"turns"</span>: max_turns}</code></pre></figure>
+
+<h3>The details that matter</h3>
+<ul>
+  <li><strong>Every tool call gets exactly one result.</strong> When the model returns several <code>tool_use</code> blocks in one turn, send all their results back together in a single user message, each matched by <code>tool_use_id</code>. Dropping one corrupts the conversation.</li>
+  <li><strong>Errors are results, not exceptions.</strong> A failed command goes back to the model as <code>is_error: true</code> with a message it can act on. The harness only raises for its own faults. (12-Factor calls this "compact errors into the context window.")</li>
+  <li><strong>Completion is explicit.</strong> A <code>finish</code> tool with a required <code>verified_by</code> field makes "done" a structured claim you can check, rather than the model just going quiet. Module 5 will make the harness check it.</li>
+  <li><strong>Three independent stop conditions.</strong> Finish, turn limit, and token budget. Production adds wall-clock time and dollar cost. A run that ends on a limit returns a status, never a fake success.</li>
+  <li><strong>Truncate from the right end.</strong> For command output, the tail holds the error. For file reads, page with an offset and tell the model how to get the rest.</li>
+</ul>
+
+<h2>Own your control flow</h2>
+<p>Frameworks hide this loop behind <code>agent.run()</code>. That's fine until you need to pause for human approval, resume after a crash, inject a check before the agent exits, or replay a failing run. HumanLayer's 12-Factor Agents turns this into principles: own your prompts, own your context window, own your control flow, and make your agent a <em>stateless reducer</em>. That last one means the next action is a pure function of the event history:</p>
+<figure class="code"><figcaption>The reducer view: state is the event log</figcaption>
+<pre><code><span class="c"># next_step(events) -> action. The harness persists events; the process holds nothing important.</span>
+events = load_events(run_id)               <span class="c"># from SQLite, Postgres, a workflow engine…</span>
+action = decide(events)                    <span class="c"># one model call over a context *built from* events</span>
+result = execute(action)                   <span class="c"># side effect, with an idempotency key (Module 9)</span>
+append_event(run_id, action, result)       <span class="c"># now a crash here costs one step, not the run</span></code></pre></figure>
+<p>This shape gives you pause/resume, replay, forking, and debugging almost for free. Module 9 builds it properly.</p>
+
+<h2>Leave room for middleware</h2>
+<p>Almost every improvement in later modules is "do something at a fixed point in the loop": before a model call, after it, before a tool executes, after it returns, when the agent tries to stop. LangChain's Terminal Bench gains were built as exactly these middlewares, and the Claude Agent SDK exposes the same points as hooks (<code>PreToolUse</code>, <code>PostToolUse</code>, <code>Stop</code>, <code>PreCompact</code>, and others). Refactor the loop once so you never have to rewrite it again:</p>
+<figure class="code"><figcaption>loop_v2.py: the same loop with hook points</figcaption>
+<pre><code><span class="k">from</span> dataclasses <span class="k">import</span> dataclass, field
+
+<span class="k">@dataclass</span>
+<span class="k">class</span> <span class="f">Decision</span>:
+    allow: bool = <span class="k">True</span>
+    message: str = <span class="s">""</span>           <span class="c"># shown to the model if blocked</span>
+
+<span class="k">class</span> <span class="f">Middleware</span>:
+    <span class="k">def</span> <span class="f">before_model</span>(self, messages): <span class="k">return</span> messages          <span class="c"># inject context, compact</span>
+    <span class="k">def</span> <span class="f">before_tool</span>(self, name, args) -> Decision: <span class="k">return</span> Decision()   <span class="c"># policy</span>
+    <span class="k">def</span> <span class="f">after_tool</span>(self, name, args, output: str) -> str: <span class="k">return</span> output <span class="c"># offload, annotate</span>
+    <span class="k">def</span> <span class="f">on_stop</span>(self, messages) -> str | <span class="k">None</span>: <span class="k">return</span> <span class="k">None</span>         <span class="c"># return text to keep going</span>
+
+<span class="k">def</span> <span class="f">run_tool</span>(mw: list[Middleware], block):
+    <span class="k">for</span> m <span class="k">in</span> mw:
+        d = m.before_tool(block.name, block.input)
+        <span class="k">if not</span> d.allow:
+            <span class="k">return</span> <span class="s">f"Blocked by policy: {d.message}"</span>, <span class="k">True</span>
+    <span class="k">try</span>:
+        out, err = execute(block.name, block.input), <span class="k">False</span>
+    <span class="k">except</span> Exception <span class="k">as</span> e:
+        out, err = <span class="s">f"{type(e).__name__}: {e}"</span>, <span class="k">True</span>
+    <span class="k">for</span> m <span class="k">in</span> mw:
+        out = m.after_tool(block.name, block.input, out)
+    <span class="k">return</span> out, err
+<span class="c"># In agent(): call before_model on messages before each request, and when the model calls
+# `finish`, ask each middleware's on_stop(); if any returns text, append it and continue.</span></code></pre></figure>
+
+<div class="note pitfall"><h4>Doom loops and silent budgets</h4>
+<p>Without a turn limit, an agent stuck on a broken approach will happily retry small variations forever. LangChain found traces with ten or more near-identical edits to the same file. Without a token budget, one bad run can cost more than a week of good ones. Put both limits in on day one, and log which one ended each run.</p></div>
+
+<div class="note try"><h4>Watch the raw transcript</h4>
+<p>Run <code>loop_v1.py</code> on a tiny task ("make the failing test in tests/test_math.py pass") and print every message. Reading raw transcripts is the single highest-value habit in this field. Anthropic's harness-design write-up lists it first among its lessons: read the model's traces on realistic problems and tune against what you see.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Use a workflow when the steps are predictable; use an agent only when they aren't.</li>
+  <li>The model proposes, the harness executes. Every guardrail lives in that gap.</li>
+  <li>Return every tool result, send errors back as data, make completion an explicit tool call, and enforce several stop conditions.</li>
+  <li>Own the loop. Model the run as an event log so pause, resume and replay come for free.</li>
+  <li>Add hook points now: before_model, before_tool, after_tool, on_stop.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">The model returns three <code>tool_use</code> blocks in one response. What should the harness send next?</p>
+<ol><li><button>The first result only, then let the model re-request the others</button></li><li><button>One user message containing three <code>tool_result</code> blocks, each with its matching <code>tool_use_id</code></button></li><li><button>Three separate user messages, one per result</button></li><li><button>A summary of the three results as plain text</button></li></ol>
+<p class="q-why">Each tool call must be answered, and the answers go together in the next user turn, matched by ID. Anything else leaves dangling calls the API will reject or the model will misread.</p></div>
+<div class="q" data-correct="2"><p class="q-prompt">A shell command fails with a stack trace. What's the best default?</p>
+<ol><li><button>Raise an exception and end the run</button></li><li><button>Retry silently three times before telling the model</button></li><li><button>Return the error to the model as a tool result marked <code>is_error</code>, trimmed to the useful part</button></li><li><button>Hide the error and return an empty string</button></li></ol>
+<p class="q-why">The model can only recover from what it can see. Silent retries hide evidence, and Module 4 shows why keeping failures in context helps the model avoid repeating them.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why give the agent an explicit <code>finish</code> tool instead of treating "no more tool calls" as done?</p>
+<ol><li><button>It turns completion into a structured claim the harness can check before accepting</button></li><li><button>It saves output tokens</button></li><li><button>The API requires it</button></li><li><button>It prevents the model from calling tools in parallel</button></li></ol>
+<p class="q-why">A structured claim (summary plus the command that proves it) gives an <code>on_stop</code> check something to verify. Premature "I'm done" is one of the most common published failure modes.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w2)"><h2>Exercise: give the loop a stop hook</h2>
+<p>Using <code>loop_v2.py</code>, write a <code>RequireVerification</code> middleware. When the model calls <code>finish</code>, its <code>on_stop</code> re-runs the command in <code>verified_by</code>. If the exit code isn't zero, it returns "Your verification command failed: …" and the loop continues.</p>
+<details><summary>Hint</summary><p>Have the loop pass the finish block's input into <code>on_stop</code>, or stash it on the middleware in <code>before_tool</code>. Cap how many times the hook can reject (say, three) so it can't create its own infinite loop.</p></details>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://www.anthropic.com/engineering/building-effective-agents">Building effective agents</a> — Anthropic, December 2024</li>
+  <li><a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a> — HumanLayer (Dex Horthy)</li>
+  <li><a href="https://code.claude.com/docs/en/agent-sdk/hooks">Agent SDK: hooks</a> — Claude Code documentation</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

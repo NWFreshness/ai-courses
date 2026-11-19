@@ -1,0 +1,140 @@
+<section class="module" id="m9" data-title="Durability and human-in-the-loop" data-wire="var(--w9)" data-group="Production">
+<div class="wire-band" style="--wire:var(--w9)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 9 of 12 · 45 minutes · hands-on</p>
+  <h1>Durability: surviving crashes, retries and waiting for people</h1>
+  <p class="lede">A demo agent lives in one process for a few minutes. A production agent runs for hours across deploys, rate limits and provider hiccups, and sometimes waits a day for a human to approve something. The model can't fix any of that. The harness has to record progress outside the process, make side effects safe to repeat, and treat a human approval as a step that can wait.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w9)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Persist an agent run as an event log so a crash costs one step, not the whole run.</li>
+    <li>Make tool side effects idempotent and retry the right failures the right way.</li>
+    <li>Implement human approval as a durable pause with expiry and re-validation.</li>
+    <li>Put cost and rate controls around runs and tenants.</li>
+  </ul>
+</div>
+
+<h2>Small failure rates compound</h2>
+<p>If each step of a run succeeds 99% of the time, a 200-step run completes cleanly only about 13% of the time. Infrastructure failures (a 429, a timeout, a worker restarted by a deploy) have nothing to do with the model's intelligence, and they're the most common reason long runs die in production. Temporal's framing is that AI reliability is mostly an old distributed-systems problem: what you need is a checkpoint that captures where you are, what has happened and what's left, so recovery means resuming rather than rebuilding.</p>
+
+<h2>Durable execution in one idea</h2>
+<p>Record the result of every completed step outside the process. On restart, replay the record instead of redoing the work. Module 2's reducer view already points here: if the next action is a function of the event history, the history is the only thing that must survive.</p>
+<p>You can get this from a workflow engine or build a minimal version yourself:</p>
+<div class="tbl"><table>
+<thead><tr><th>Option</th><th>How it checkpoints</th><th>Choose it when</th></tr></thead>
+<tbody>
+<tr><td>Temporal</td><td>Append-only event history per workflow; model and tool calls run as activities</td><td>Many long runs, many workers, strict recovery needs. Temporal reports adoption by OpenAI (Codex on the web), Replit and Lovable.</td></tr>
+<tr><td>LangGraph checkpointer</td><td>Saves graph state after each node</td><td>Your agent is already a LangGraph graph</td></tr>
+<tr><td>DBOS, Inngest, Restate and similar</td><td>Step results stored in Postgres or the platform</td><td>You want durability with less infrastructure</td></tr>
+<tr><td>Your own event log</td><td>A table of steps in SQLite or Postgres plus a step wrapper</td><td>One service, modest volume, and you want to understand every piece</td></tr>
+</tbody></table></div>
+
+<figure class="code"><figcaption>durable.py: a minimal event log with idempotent steps</figcaption>
+<pre><code><span class="k">import</span> sqlite3, json, hashlib, time
+
+db = sqlite3.connect(<span class="s">"runs.db"</span>, isolation_level=<span class="k">None</span>)
+db.execute(<span class="s">"""CREATE TABLE IF NOT EXISTS steps(
+  run_id TEXT, seq INTEGER, kind TEXT, key TEXT, payload TEXT, result TEXT, ts REAL,
+  PRIMARY KEY(run_id, seq))"""</span>)
+
+<span class="k">def</span> <span class="f">step</span>(run_id: str, seq: int, kind: str, payload: dict, fn):
+    <span class="s">"""Run fn(payload) at most once per (run_id, seq). Replays the stored result after a crash."""</span>
+    row = db.execute(<span class="s">"SELECT result FROM steps WHERE run_id=? AND seq=?"</span>, (run_id, seq)).fetchone()
+    <span class="k">if</span> row:
+        <span class="k">return</span> json.loads(row[<span class="s">0</span>])                          <span class="c"># already done: replay, don't redo</span>
+    key = hashlib.sha256(<span class="s">f"{run_id}:{seq}:{kind}"</span>.encode()).hexdigest()[:<span class="s">32</span>]
+    result = fn(payload, idempotency_key=key)               <span class="c"># pass the key to anything external</span>
+    db.execute(<span class="s">"INSERT INTO steps VALUES (?,?,?,?,?,?,?)"</span>,
+               (run_id, seq, kind, key, json.dumps(payload, sort_keys=<span class="k">True</span>),
+                json.dumps(result, sort_keys=<span class="k">True</span>), time.time()))
+    <span class="k">return</span> result
+
+<span class="c"># In the loop, every model call and every tool call becomes a step:</span>
+<span class="c">#   resp  = step(run_id, seq, "model", {"messages": msgs}, call_model);        seq += 1</span>
+<span class="c">#   out   = step(run_id, seq, "tool",  {"name": n, "args": a}, call_tool);     seq += 1</span>
+<span class="c"># On restart, the loop re-runs from the top; completed steps return instantly from the log.</span></code></pre></figure>
+<p>Two subtleties. First, a crash can happen after the external side effect but before the <code>INSERT</code>. That's why the idempotency key exists: pass it to the payment API, the ticketing system or your own service so a repeated call is recognized and ignored. Where an API has no idempotency support, look up whether the effect already happened before retrying. Second, replay only works if the loop makes the same decisions given the same recorded results, so keep randomness and clock reads inside recorded steps too.</p>
+
+<div class="note field"><h4>What skipping this costs</h4>
+<p>A frequently shared failure story goes like this: a batch agent crashes halfway through a few hundred items, the restart begins again at item one, paid model calls are repeated, and outbound messages that had already been queued get queued a second time. The fix in that case was an event log, a step wrapper and SQLite, roughly 150 lines, which is about the size of the example above.</p></div>
+
+<h2>Retry the right things, the right way</h2>
+<div class="tbl"><table>
+<thead><tr><th>Failure</th><th>Policy</th></tr></thead>
+<tbody>
+<tr><td>Rate limit or overloaded (429, 529), 5xx, network timeout</td><td>Retry with exponential backoff and jitter; honor any retry-after header; cap attempts</td></tr>
+<tr><td>Provider outage beyond a few minutes</td><td>Fail over to a fallback model or region if your evals say it's good enough; otherwise pause the run</td></tr>
+<tr><td>Invalid request (400), schema error</td><td>Don't retry blindly; it's a harness bug. Log it and fix the code</td></tr>
+<tr><td>Tool error the model caused</td><td>Not a retry: return it to the model as a tool result (Module 2)</td></tr>
+<tr><td>Side-effecting tool that timed out</td><td>Retry only with an idempotency key or after confirming the effect didn't happen</td></tr>
+</tbody></table></div>
+
+<h2>Humans as a durable step</h2>
+<p>12-Factor Agents makes two points that belong together: contact humans with tool calls, and give runs simple launch, pause and resume APIs. An approval request is a tool the agent calls. The harness records it, notifies someone through Slack, email or a dashboard, and <em>ends the process</em>. When the human answers, minutes or days later, a resume call appends the answer to the event log and the run continues.</p>
+<figure class="code"><figcaption>Approval as pause and resume</figcaption>
+<pre><code><span class="k">def</span> <span class="f">request_approval</span>(run_id, seq, action, args, ttl_hours=<span class="s">24</span>):
+    req = {<span class="s">"action"</span>: action, <span class="s">"args"</span>: args, <span class="s">"expires"</span>: time.time() + ttl_hours * <span class="s">3600</span>,
+           <span class="s">"state_digest"</span>: digest_of_relevant_state(action, args)}     <span class="c"># what the human is approving</span>
+    save_pending(run_id, seq, req)
+    notify_approvers(run_id, req)                <span class="c"># Slack/email with Approve / Decline links</span>
+    <span class="k">raise</span> Paused(run_id)                          <span class="c"># the worker exits; nothing held in memory</span>
+
+<span class="k">def</span> <span class="f">resume</span>(run_id, decision: bool, approver: str):
+    req = load_pending(run_id)
+    <span class="k">if</span> time.time() > req[<span class="s">"expires"</span>]:
+        decision, note = <span class="k">False</span>, <span class="s">"Approval expired."</span>
+    <span class="k">elif</span> digest_of_relevant_state(req[<span class="s">"action"</span>], req[<span class="s">"args"</span>]) != req[<span class="s">"state_digest"</span>]:
+        decision, note = <span class="k">False</span>, <span class="s">"The target changed while waiting; re-plan and ask again."</span>
+    <span class="k">else</span>:
+        note = <span class="s">f"{'Approved' if decision else 'Declined'} by {approver}."</span>
+    append_event(run_id, <span class="s">"approval"</span>, {<span class="s">"decision"</span>: decision, <span class="s">"note"</span>: note})
+    enqueue(run_id)                               <span class="c"># a worker picks the run back up from the log</span></code></pre></figure>
+<p>The state digest handles a trap that's easy to miss: the world doesn't wait while the run is paused. The config the agent wanted to change may have been edited by someone else in the meantime. Re-check that what was approved is still what will happen, and expire stale approvals.</p>
+<p>Make approval requests worth reading: say what will change, show the diff or the exact command, state the blast radius, and say how to undo it. Module 8 explained why approvals have to be rare; this is what makes the rare ones useful.</p>
+
+<h2>Cost and rate controls</h2>
+<ul>
+  <li><strong>Per-run budgets</strong> for tokens, dollars, wall-clock time and turns, each ending the run with a clear status.</li>
+  <li><strong>Per-tenant and global caps</strong> so one runaway run or one heavy customer can't exhaust your provider quota for everyone.</li>
+  <li><strong>Circuit breakers</strong> that pause new runs when error rates spike, instead of burning money on a broken dependency.</li>
+  <li><strong>Harness version on every run.</strong> Record the harness version, model and prompt hashes in the first event. When a deploy lands mid-run, decide whether in-flight runs finish on the old version or migrate, and make that choice explicit.</li>
+</ul>
+
+<div class="note pitfall"><h4>The forever approval</h4>
+<p>Some frameworks' interrupt primitives wait indefinitely for a resume. Combined with a process that holds the run in memory, that means a deploy or crash silently loses every pending approval. Pending approvals belong in the database, with an expiry, and the worker should not exist while waiting.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Long runs fail mostly for infrastructure reasons; per-step success rates compound.</li>
+  <li>Record each step's result outside the process so a restart replays instead of redoing.</li>
+  <li>Give every external side effect an idempotency key, and retry only transient failures, with backoff.</li>
+  <li>Implement human approval as a tool call that pauses the run durably, with expiry and re-validation on resume.</li>
+  <li>Budget runs, cap tenants, break circuits, and stamp every run with its harness version.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">A worker crashes right after a <code>create_ticket</code> call succeeded but before the step was recorded. What prevents a duplicate ticket on restart?</p>
+<ol><li><button>A longer timeout</button></li><li><button>Lowering the model temperature</button></li><li><button>An idempotency key passed to the ticketing API, or a lookup before retrying</button></li><li><button>Retrying immediately instead of after a delay</button></li></ol>
+<p class="q-why">The log can't record what happened in the gap, so the external system must recognize the repeat. That's what the key is for.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">The model call fails with HTTP 400 because a tool schema is malformed. Best policy?</p>
+<ol><li><button>Retry with exponential backoff</button></li><li><button>Don't retry; it's a harness bug to log and fix</button></li><li><button>Fail over to another model</button></li><li><button>Send the error to the model as a tool result</button></li></ol>
+<p class="q-why">Retrying a deterministic client error wastes time and money. Backoff is for transient failures such as 429 and 5xx.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">A human approves a config change 20 hours after the agent requested it. What should happen before applying it?</p>
+<ol><li><button>Check the approval hasn't expired and that the target state still matches what was approved</button></li><li><button>Apply immediately; approval is approval</button></li><li><button>Ask the model whether it still wants to apply it</button></li><li><button>Restart the run from the beginning</button></li></ol>
+<p class="q-why">The world changes while you wait. Re-validating against a digest of the approved state prevents applying a decision to something that's no longer there.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w9)"><h2>Exercise: kill it mid-run</h2>
+<p>Wrap your loop's model and tool calls in the <code>step()</code> function. Start a 30-step task and kill the process with <code>kill -9</code> at step 12. Restart it. Confirm that steps 1–11 replay from the log without new API calls (check your provider usage) and that no side effect happens twice.</p>
+<p>Then add one approval-gated tool and exercise pause, resume, decline and expiry.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a> — factors 5–8 and 12</li>
+  <li><a href="https://temporal.io/blog/ai-reliability-is-a-decade-old-problem">AI reliability is a decade-old problem</a> — Temporal</li>
+  <li><a href="https://hackernoon.com/durable-execution-for-ai-agents-langgraph-dbos-inngest-and-temporal-compared">Durable execution for AI agents: LangGraph, DBOS, Inngest and Temporal compared</a> — HackerNoon</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

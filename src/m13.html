@@ -1,0 +1,151 @@
+<section class="module" id="checklist" data-title="Production readiness checklist" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head">
+  <p class="mod-num">Reference</p>
+  <h1>Production readiness checklist</h1>
+  <p class="lede">Use this before an agent runs unattended or touches anything real. Each line points back to the module that explains it. Your ticks are saved in this browser.</p>
+</header>
+
+<h2>Loop and control (Module 2)</h2>
+<ul class="check">
+  <li><label><input type="checkbox" data-key="c-l1"> Completion is an explicit, structured tool call, checked before it's accepted</label></li>
+  <li><label><input type="checkbox" data-key="c-l2"> Turn, token, time and cost limits each end the run with a distinct status</label></li>
+  <li><label><input type="checkbox" data-key="c-l3"> Tool errors go back to the model as results; harness faults are logged separately</label></li>
+  <li><label><input type="checkbox" data-key="c-l4"> Hook points exist before model calls, before and after tools, and on stop</label></li>
+</ul>
+<h2>Tools (Module 3)</h2>
+<ul class="check">
+  <li><label><input type="checkbox" data-key="c-t1"> A small set of task-level, namespaced tools with distinct purposes</label></li>
+  <li><label><input type="checkbox" data-key="c-t2"> Every output is bounded, and truncation tells the agent how to get more</label></li>
+  <li><label><input type="checkbox" data-key="c-t3"> Error messages state the fix and show a correct example</label></li>
+  <li><label><input type="checkbox" data-key="c-t4"> Large outputs are offloaded to files with a pointer left in context</label></li>
+  <li><label><input type="checkbox" data-key="c-t5"> The tool list is stable within a run</label></li>
+</ul>
+<h2>Context (Module 4)</h2>
+<ul class="check">
+  <li><label><input type="checkbox" data-key="c-c1"> No volatile values in the prompt prefix; history is append-only; JSON is serialized deterministically</label></li>
+  <li><label><input type="checkbox" data-key="c-c2"> Cache hit rate is measured and tracked</label></li>
+  <li><label><input type="checkbox" data-key="c-c3"> Instruction file is a short map into versioned docs; CI checks its references</label></li>
+  <li><label><input type="checkbox" data-key="c-c4"> Compaction or reset strategy chosen and tested for the current model</label></li>
+</ul>
+<h2>Guides and sensors (Module 5)</h2>
+<ul class="check">
+  <li><label><input type="checkbox" data-key="c-s1"> Every important guide has a matching sensor</label></li>
+  <li><label><input type="checkbox" data-key="c-s2"> Sensor messages give location, rule, fix and reference</label></li>
+  <li><label><input type="checkbox" data-key="c-s3"> Verification runs before finish is accepted, with a rejection cap</label></li>
+  <li><label><input type="checkbox" data-key="c-s4"> Loop detection and time-budget warnings are in place</label></li>
+  <li><label><input type="checkbox" data-key="c-s5"> Subjective quality is graded by a separate, calibrated evaluator</label></li>
+</ul>
+<h2>Long-running work and orchestration (Modules 6–7)</h2>
+<ul class="check">
+  <li><label><input type="checkbox" data-key="c-r1"> State lives in files: plan or feature list, progress log, init script, git</label></li>
+  <li><label><input type="checkbox" data-key="c-r2"> "Done" is read from an artifact, never from the model's claim</label></li>
+  <li><label><input type="checkbox" data-key="c-r3"> Stalls across sessions trigger escalation</label></li>
+  <li><label><input type="checkbox" data-key="c-r4"> Subagents are read-only or own disjoint outputs; their traces are kept; their output is treated as data</label></li>
+</ul>
+<h2>Safety (Module 8)</h2>
+<ul class="check">
+  <li><label><input type="checkbox" data-key="c-x1"> Trifecta analysis done; at least one leg is cut on every path</label></li>
+  <li><label><input type="checkbox" data-key="c-x2"> Filesystem and network isolation both enforced at the OS or VM level</label></li>
+  <li><label><input type="checkbox" data-key="c-x3"> No long-lived credentials inside the sandbox</label></li>
+  <li><label><input type="checkbox" data-key="c-x4"> Egress allowlist is specific; each allowed endpoint has been reviewed for what it can do</label></li>
+  <li><label><input type="checkbox" data-key="c-x5"> Deterministic policy hooks; human approval only for rare, high-stakes actions</label></li>
+  <li><label><input type="checkbox" data-key="c-x6"> Repo config, memory files and tool outputs are treated as untrusted input</label></li>
+</ul>
+<h2>Durability (Module 9)</h2>
+<ul class="check">
+  <li><label><input type="checkbox" data-key="c-d1"> Every step is recorded outside the process; restart replays from the log</label></li>
+  <li><label><input type="checkbox" data-key="c-d2"> Side effects carry idempotency keys</label></li>
+  <li><label><input type="checkbox" data-key="c-d3"> Transient failures retry with backoff; client errors don't</label></li>
+  <li><label><input type="checkbox" data-key="c-d4"> Approvals pause durably, expire, and re-validate state on resume</label></li>
+  <li><label><input type="checkbox" data-key="c-d5"> Per-tenant caps and circuit breakers exist</label></li>
+</ul>
+<h2>Observability, evals and evolution (Modules 10–11)</h2>
+<ul class="check">
+  <li><label><input type="checkbox" data-key="c-o1"> Traces cover runs, model calls, tool calls and subagents, with redaction</label></li>
+  <li><label><input type="checkbox" data-key="c-o2"> Dashboards for success, cost per success, cache hits, tool errors, turns and stop reasons</label></li>
+  <li><label><input type="checkbox" data-key="c-o3"> Regression suite runs on every harness change; pass^k reported</label></li>
+  <li><label><input type="checkbox" data-key="c-o4"> A held-out eval set exists and isn't used for tuning</label></li>
+  <li><label><input type="checkbox" data-key="c-o5"> Every run records harness version, model and prompt hashes</label></li>
+  <li><label><input type="checkbox" data-key="c-o6"> Every component has a recorded reason and a removal test</label></li>
+</ul>
+<div class="mod-foot"></div>
+</section>
+
+<section class="module" id="glossary" data-title="Glossary" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Glossary</h1></header>
+<dl class="gloss">
+  <dt>Agent</dt><dd>A model using tools in a loop, choosing its own steps. In this course's terms, a model plus a harness.</dd>
+  <dt>Approval fatigue</dt><dd>When people approve nearly every permission prompt, so prompts stop protecting anything. Claude Code saw about 93% approval before moving to sandboxing.</dd>
+  <dt>Builder harness / user harness</dt><dd>The harness an agent's makers ship (loop, system prompt, built-in tools) versus the controls you add for your project (instruction files, hooks, linters, tests).</dd>
+  <dt>Compaction</dt><dd>Summarizing a long context so work can continue in less space. Lossy; tune for recall first.</dd>
+  <dt>Computational / inferential control</dt><dd>Deterministic checks and tools (tests, linters, type checks) versus model-based ones (review agents, LLM judges).</dd>
+  <dt>Context anxiety</dt><dd>A behavior seen in some models where they start wrapping up early as their context fills. Anthropic observed it in Claude Sonnet 4.5.</dd>
+  <dt>Context engineering</dt><dd>Choosing which tokens the model sees at each step.</dd>
+  <dt>Context reset</dt><dd>Ending a session and starting a fresh one that orients itself from files, rather than compacting.</dd>
+  <dt>Context rot</dt><dd>The gradual decline in a model's ability to use information as its context window fills.</dd>
+  <dt>Doom loop</dt><dd>An agent repeatedly trying small variations of the same failing approach.</dd>
+  <dt>Durable execution</dt><dd>Recording each step's result outside the process so a crash or restart resumes rather than redoes work.</dd>
+  <dt>Evaluator</dt><dd>A separate agent that grades another agent's output against criteria, often by using the product.</dd>
+  <dt>Guide (feedforward)</dt><dd>A control that acts before the agent does, to make a good result more likely.</dd>
+  <dt>Harness</dt><dd>Everything in an agent that isn't the model: loop, tools, context management, guides, sensors, state, orchestration, isolation, durability, observability.</dd>
+  <dt>Harnessability</dt><dd>How easy a codebase or system is to put good guides and sensors around, for example because of strong typing and clear module boundaries.</dd>
+  <dt>Hook / middleware</dt><dd>Code that runs at a fixed point in the loop on every call, such as before a tool executes.</dd>
+  <dt>Idempotency key</dt><dd>A unique key sent with a side-effecting request so a repeat is recognized and ignored.</dd>
+  <dt>KV-cache / prompt cache</dt><dd>Reuse of computation for an identical prompt prefix, which makes repeated input much cheaper and faster.</dd>
+  <dt>Lethal trifecta</dt><dd>Private data, untrusted content and external communication in one agent. Simon Willison's term for the combination that makes prompt injection exploitable.</dd>
+  <dt>pass@k / pass^k</dt><dd>The chance that at least one of k trials succeeds, versus the chance that all k succeed.</dd>
+  <dt>Progressive disclosure</dt><dd>Loading a short entry point first and details only when needed, as skills and instruction-file maps do.</dd>
+  <dt>Prompt injection</dt><dd>Untrusted content that the model treats as instructions.</dd>
+  <dt>Ralph loop</dt><dd>A harness that catches the agent's exit and restarts it with the original prompt in a fresh context, relying on state in files.</dd>
+  <dt>Recitation</dt><dd>Rewriting the current plan at the end of the context so the model keeps attending to it.</dd>
+  <dt>Sensor (feedback)</dt><dd>A control that observes after the agent acts and helps it self-correct.</dd>
+  <dt>Sprint contract</dt><dd>An agreement between a generator and an evaluator, before work starts, on what "done" means for a chunk of work.</dd>
+  <dt>Stateless reducer</dt><dd>12-Factor Agents' model of an agent step as a pure function from event history to next action.</dd>
+</dl>
+<div class="mod-foot"></div>
+</section>
+
+<section class="module" id="sources" data-title="Sources and further reading" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Sources and further reading</h1>
+<p class="lede">The course was researched in November 2026. Figures are as reported by their authors; vendor-reported numbers come from the vendor's own environment and may not transfer to yours.</p></header>
+<h2>Harness engineering</h2>
+<ul class="sources">
+  <li><a href="https://openai.com/index/harness-engineering/">Harness engineering: leveraging Codex in an agent-first world</a> — Ryan Lopopolo, OpenAI, February 2026</li>
+  <li><a href="https://martinfowler.com/articles/harness-engineering.html">Harness engineering for coding agent users</a> — Birgitta Böckeler, martinfowler.com, April 2026</li>
+  <li><a href="https://martinfowler.com/articles/exploring-gen-ai/harness-engineering-memo.html">Harness Engineering: first thoughts</a> — Birgitta Böckeler</li>
+  <li><a href="https://www.langchain.com/blog/the-anatomy-of-an-agent-harness">The Anatomy of an Agent Harness</a> — Vivek Trivedy, LangChain, March 2026</li>
+  <li><a href="https://www.langchain.com/blog/improving-deep-agents-with-harness-engineering">Improving Deep Agents with harness engineering</a> — LangChain, February 2026</li>
+  <li><a href="https://arxiv.org/abs/2603.28052">Meta-Harness: End-to-End Optimization of Model Harnesses</a> — Lee, Nair, Zhang, Lee, Khattab, Finn, March 2026</li>
+  <li><a href="https://www.thoughtworks.com/en-us/insights/podcasts/technology-podcasts/what-harness-engineering">What is harness engineering?</a> — Thoughtworks Technology Podcast with Birgitta Böckeler, May 2026</li>
+</ul>
+<h2>Anthropic engineering</h2>
+<ul class="sources">
+  <li><a href="https://www.anthropic.com/engineering/building-effective-agents">Building effective agents</a> — December 2024</li>
+  <li><a href="https://www.anthropic.com/engineering/multi-agent-research-system">How we built our multi-agent research system</a> — June 2025</li>
+  <li><a href="https://www.anthropic.com/engineering/writing-tools-for-agents">Writing effective tools for agents — with agents</a></li>
+  <li><a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective context engineering for AI agents</a></li>
+  <li><a href="https://www.anthropic.com/engineering/claude-code-sandboxing">Beyond permission prompts: making Claude Code more secure and autonomous</a> — October 2025</li>
+  <li><a href="https://www.anthropic.com/engineering/code-execution-with-mcp">Code execution with MCP</a> — November 2025</li>
+  <li><a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents">Effective harnesses for long-running agents</a> — November 2025</li>
+  <li><a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Demystifying evals for AI agents</a> — January 2026</li>
+  <li><a href="https://www.anthropic.com/engineering/harness-design-long-running-apps">Harness design for long-running application development</a> — March 2026</li>
+  <li><a href="https://www.anthropic.com/engineering/how-we-contain-claude">How we contain Claude across products</a> — 2026</li>
+  <li><a href="https://code.claude.com/docs/en/agent-sdk/hooks">Claude Agent SDK: hooks</a> — documentation</li>
+</ul>
+<h2>Context, multi-agent, safety and operations</h2>
+<ul class="sources">
+  <li><a href="https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus">Context Engineering for AI Agents: Lessons from Building Manus</a> — Yichao "Peak" Ji, July 2025</li>
+  <li><a href="https://cognition.ai/blog/dont-build-multi-agents">Don't Build Multi-Agents</a> — Walden Yan, Cognition, June 2025</li>
+  <li><a href="https://cognition.com/blog/multi-agents-working">Multi-Agents: What's Actually Working</a> — Walden Yan, Cognition, April 2026</li>
+  <li><a href="https://blog.langchain.com/how-and-when-to-build-multi-agent-systems">How and when to build multi-agent systems</a> — LangChain</li>
+  <li><a href="https://github.com/humanlayer/12-factor-agents">12-Factor Agents</a> — HumanLayer</li>
+  <li><a href="https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/">The lethal trifecta for AI agents</a> — Simon Willison, June 2025</li>
+  <li><a href="https://temporal.io/blog/ai-reliability-is-a-decade-old-problem">AI reliability is a decade-old problem</a> — Temporal</li>
+  <li><a href="https://hackernoon.com/durable-execution-for-ai-agents-langgraph-dbos-inngest-and-temporal-compared">Durable execution for AI agents compared</a> — HackerNoon</li>
+  <li><a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/">OpenTelemetry semantic conventions for generative AI</a></li>
+</ul>
+<div class="mod-foot"></div>
+</section>

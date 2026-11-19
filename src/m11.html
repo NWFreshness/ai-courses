@@ -1,0 +1,132 @@
+<section class="module" id="m11" data-title="Evolving the harness" data-wire="var(--w11)" data-group="Production">
+<div class="wire-band" style="--wire:var(--w11)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 11 of 12 · 35 minutes</p>
+  <h1>Evolving the harness: steering, entropy and new models</h1>
+  <p class="lede">A harness is never finished. Agents copy the patterns they find, so a codebase drifts unless something pushes back. Every new model shifts which scaffolding helps and which just costs tokens. This module covers how to run the harness as a living system: who maintains it, how it's cleaned, and how to decide what to remove.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w11)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Run the steering loop that turns recurring failures into harness changes.</li>
+    <li>Fight entropy with encoded principles and background cleanup agents.</li>
+    <li>Re-evaluate a harness when the model changes, and remove components safely.</li>
+    <li>Document each harness component with its reason to exist and its removal test.</li>
+  </ul>
+</div>
+
+<h2>The steering loop</h2>
+<p>Böckeler describes the human's job in a harnessed system as steering: iterating on the harness itself. When the same issue appears more than once, improve a guide or a sensor so that it becomes less likely or impossible. Agents can do much of that work, such as drafting a structural test or scaffolding a custom linter, so the loop gets cheaper as it runs.</p>
+<figure class="diagram">
+<svg viewBox="0 0 660 200" role="img" aria-label="The steering loop: observe a failure in traces or review, classify it, change a guide or sensor, verify with evals, then watch the metric.">
+  <g style="font-size:13px">
+  <rect x="10" y="70" width="110" height="56" rx="6" class="box"/><text x="65" y="95" text-anchor="middle" style="font-weight:600">Observe</text><text x="65" y="113" text-anchor="middle" class="muted" style="font-size:11px">traces, reviews</text>
+  <rect x="140" y="70" width="110" height="56" rx="6" class="box"/><text x="195" y="95" text-anchor="middle" style="font-weight:600">Classify</text><text x="195" y="113" text-anchor="middle" class="muted" style="font-size:11px">which component?</text>
+  <rect x="270" y="70" width="120" height="56" rx="6" class="box" style="stroke:var(--w11);stroke-width:2.5"/><text x="330" y="95" text-anchor="middle" style="font-weight:600">Change harness</text><text x="330" y="113" text-anchor="middle" class="muted" style="font-size:11px">guide or sensor</text>
+  <rect x="410" y="70" width="110" height="56" rx="6" class="box"/><text x="465" y="95" text-anchor="middle" style="font-weight:600">Verify</text><text x="465" y="113" text-anchor="middle" class="muted" style="font-size:11px">evals, held-out set</text>
+  <rect x="540" y="70" width="110" height="56" rx="6" class="box"/><text x="595" y="95" text-anchor="middle" style="font-weight:600">Watch</text><text x="595" y="113" text-anchor="middle" class="muted" style="font-size:11px">metric in prod</text></g>
+  <path d="M120 98 H140 M250 98 H270 M390 98 H410 M520 98 H540" class="ln" marker-end="url(#arr11)"/>
+  <path d="M595 126 C595 180 65 180 65 126" class="ln" marker-end="url(#arr11)"/>
+  <path id="loop11" d="M65 98 H595 V126 C595 180 65 180 65 126 Z" fill="none"/>
+  <g class="live"><circle r="7" fill="var(--ink)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="6s" repeatCount="indefinite"><mpath href="#loop11"/></animateMotion></circle></g>
+  <defs><marker id="arr11" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+</svg>
+<figcaption>Each turn of the loop should leave behind a component with a documented reason to exist.</figcaption>
+</figure>
+<p>OpenAI's Codex team ran the same loop with one more rule: when docs weren't enough to change the agent's behavior, they promoted the rule into code (a lint, a test, a structural check). Human taste was captured in docs or tooling rather than in individual review comments.</p>
+
+<h2>Entropy: agents copy what they see</h2>
+<p>Agents imitate existing patterns, including bad ones, so every shortcut that lands becomes a template for the next change. OpenAI's team initially fought this with a weekly manual cleanup that took about a fifth of the team's time, and it didn't scale. What replaced it:</p>
+<ul>
+  <li><strong>Golden principles</strong> written into the repo as opinionated, mechanical rules, for example preferring shared utility packages to hand-rolled helpers, and validating data shapes rather than guessing at them.</li>
+  <li><strong>Background cleanup agents</strong> on a schedule that scan for deviations, update per-domain quality grades, and open small refactoring PRs. Most can be reviewed in under a minute and merged automatically.</li>
+  <li><strong>A doc-gardening agent</strong> that finds documentation that no longer matches the code and opens fix-up PRs.</li>
+</ul>
+<p>Their framing of technical debt is worth borrowing: a high-interest loan that should be paid down continuously in small increments rather than in occasional large refactors.</p>
+
+<div class="note principle"><h4>Throughput changes the merge policy</h4>
+<p>With agents producing far more change than humans can review, OpenAI kept blocking gates minimal and pull requests short-lived. Flaky tests were usually re-run rather than allowed to block. Their reasoning: when throughput vastly exceeds human attention, correcting a mistake is cheap and waiting is expensive. They're explicit that this would be irresponsible in a low-throughput setting. The right gate strictness depends on how cheap your corrections are, so measure that before copying the policy.</p></div>
+
+<h2>When the model changes</h2>
+<p>Harness components exist because of something a particular model does badly. When the model changes, some of those reasons disappear and new ones appear.</p>
+<ul>
+  <li><strong>Remove what's no longer needed.</strong> Anthropic's March 2026 harness dropped context resets once Opus 4.5 no longer showed context anxiety, and dropped the per-sprint structure with Opus 4.6, while keeping the planner because the generator still under-scoped without it (Module 6).</li>
+  <li><strong>Expect temporary guardrails.</strong> LangChain's advice is to design guardrails for today's shortcomings, such as blind retries and unverified work, and to expect some to become unnecessary as models improve.</li>
+  <li><strong>Tune per model.</strong> Different models need different prompting and scaffolding. In LangChain's work, a Claude Opus 4.6 run scored 59.6% on an earlier harness version, below their tuned Codex run, because they hadn't run the improvement loop for Claude.</li>
+</ul>
+
+<h3>Co-evolution and overfitting</h3>
+<p>Coding models are now post-trained with their own harnesses in the loop, so they get better at whatever those harnesses emphasize: filesystem operations, bash, planning, subagents. That's mostly good. LangChain points out the downside, overfitting to a particular tool interface: a model can do worse when, say, the format of its file-editing tool changes, even though a capable model "should" adapt. Their conclusion is that the best harness for your task isn't necessarily the one the model was trained with. Test, don't assume.</p>
+
+<h2>Treat the harness as a product</h2>
+<p>A harness is software with users (the agents) and stakeholders (you). It deserves the same engineering discipline as the code it produces.</p>
+<ul>
+  <li><strong>Version it</strong> and record the version on every run (Module 9).</li>
+  <li><strong>Test it</strong> with the eval suite on every change (Module 10).</li>
+  <li><strong>Flag it.</strong> Ship new middleware behind a flag and compare on a slice of traffic before switching it on everywhere.</li>
+  <li><strong>Document why each part exists.</strong> A short record per component prevents the two classic mistakes: deleting something that was preventing a real failure, and keeping something nobody remembers the purpose of.</li>
+</ul>
+<figure class="code"><figcaption>docs/harness/loop-detection.md: a component record</figcaption>
+<pre><code># Harness component: LoopDetection middleware
+Added: 2026-10-02 (harness v14)        Owner: platform-agents
+
+## Failure it addresses
+Agent retries small variations of one broken fix; traces show 8–14 edits to one file.
+Evidence: traces 7f3a…, 91c0…; eval tasks refactor-03, migrate-11.
+
+## How it works
+Counts edits per file in after_tool; at 5 and 10 edits appends a "step back" note.
+
+## Signal that it's working
+"harness.loop_note" fires on ~4% of runs; median turns on affected tasks fell from 61 to 38.
+
+## Removal test
+Disable on 10% of eval runs with each new model. Remove if pass^3 and turns are unchanged
+on refactor-03, migrate-11 and the regression suite.</code></pre></figure>
+<p>The removal test is the important line. It turns "should we still have this?" from a debate into an experiment you can run on every model upgrade.</p>
+
+<h2>Open problems</h2>
+<p>The field is young, and the primary sources are candid about what isn't solved yet.</p>
+<ul>
+  <li><strong>Coherence.</strong> How do you keep hundreds of guides and sensors consistent as a harness grows, and how much should you trust an agent to resolve conflicting instructions? (Böckeler)</li>
+  <li><strong>Harness coverage.</strong> There's no equivalent yet of code coverage or mutation testing for asking how much of the space of mistakes a harness can catch. (Böckeler)</li>
+  <li><strong>Behavioral verification.</strong> Checking that software does the right thing, rather than that it's well-formed, still leans heavily on tests the agent wrote itself. (Böckeler)</li>
+  <li><strong>Long-term architecture.</strong> How a fully agent-generated system's architecture holds up over years, and where human judgment adds the most leverage, is still unknown. (OpenAI)</li>
+  <li><strong>Scale and self-improvement.</strong> Orchestrating hundreds of agents in parallel, having agents analyze their own traces to fix harness failures, and assembling tools and context just-in-time. (LangChain, Meta-Harness)</li>
+  <li><strong>Generalization.</strong> Most published harness work is about coding. Whether the lessons carry to research, finance or operations is largely untested. (Anthropic)</li>
+</ul>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Steer by changing the harness when a failure recurs; promote rules from docs into code when docs aren't enough.</li>
+  <li>Agents amplify existing patterns. Encode principles mechanically and run cleanup agents continuously.</li>
+  <li>Gate strictness should match how cheap corrections are in your setting.</li>
+  <li>Re-examine the harness with every model change; remove what no longer helps and tune for the model you run.</li>
+  <li>Version, test and flag the harness, and give every component a recorded reason and a removal test.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">A new model ships. What's the right first move for your harness?</p>
+<ol><li><button>Keep everything; more scaffolding never hurts</button></li><li><button>Delete all middleware and start over</button></li><li><button>Run each component's removal test with the new model and keep only what still improves results</button></li><li><button>Copy the harness the model's vendor uses</button></li></ol>
+<p class="q-why">Scaffolding costs tokens and latency. Measure each piece against the new model rather than assuming in either direction.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why did OpenAI move from weekly manual cleanup to background agents?</p>
+<ol><li><button>Manual cleanup took about a fifth of the team's time and couldn't keep pace with drift</button></li><li><button>Agents write better code than humans</button></li><li><button>Humans weren't allowed to commit code</button></li><li><button>CI was too slow</button></li></ol>
+<p class="q-why">Drift accumulates at agent speed, so the cleanup has to run at agent speed too, in small, quickly reviewable PRs.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">According to LangChain, is the best harness for a model the one it was post-trained with?</p>
+<ol><li><button>Yes, always</button></li><li><button>Not necessarily; models can overfit to their training harness, and other harnesses can do better on your task</button></li><li><button>Only for open-weight models</button></li><li><button>Only on Terminal Bench</button></li></ol>
+<p class="q-why">Co-evolution helps on the primitives the harness emphasizes, but it can also make a model brittle to interface changes. Test alternatives on your own evals.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w11)"><h2>Exercise: write the records</h2>
+<p>For every middleware, hook and sensor you've built in this course, write a component record using the template above: the failure it addresses, the evidence, the signal that it works, and a removal test. Then run one removal test for real: disable a component on half your eval runs and see whether it's still earning its place.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://openai.com/index/harness-engineering/">Harness engineering</a> — OpenAI (entropy, garbage collection and merge philosophy)</li>
+  <li><a href="https://martinfowler.com/articles/harness-engineering.html">Harness engineering for coding agent users</a> — Böckeler (steering and open questions)</li>
+  <li><a href="https://www.langchain.com/blog/the-anatomy-of-an-agent-harness">The Anatomy of an Agent Harness</a> — LangChain (co-evolution)</li>
+  <li><a href="https://www.anthropic.com/engineering/harness-design-long-running-apps">Harness design for long-running application development</a> — Anthropic</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

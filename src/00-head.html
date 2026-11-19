@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#EDF0F2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Harness Course">
+<script>document.documentElement.className="js";</script>
+<title>Harness Engineering: a field course</title>
+<style>
+:root{
+  --paper:#EDF0F2; --surface:#F8F9FA; --ink:#18212B; --muted:#56616C; --rule:#C7CED5;
+  --link:#245BA8; --code-bg:#1E2630; --code-ink:#DCE3EA; --mark:#FFF1B8;
+  --w0:#18212B; --w1:#7B4B2A; --w2:#C0392B; --w3:#D9731A; --w4:#B8920F; --w5:#1F8A8A;
+  --w6:#2D62B0; --w7:#6E4FA8; --w8:#3E9B3A; --w8b:#D8B417; --w9:#39414B; --w10:#B0457A; --w11:#8C939C;
+  --body: Charter, "Bitstream Charter", "Iowan Old Style", "Sitka Text", Cambria, Georgia, serif;
+  --display: Bahnschrift, "DIN Alternate", "DIN Next", "D-DIN", "Avenir Next Condensed", "Roboto Condensed", "Arial Narrow", sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+  --nav-w: 290px;
+}
+[data-theme="dark"]{
+  --paper:#141A21; --surface:#1B232C; --ink:#E3E8ED; --muted:#9AA6B2; --rule:#2F3A45;
+  --link:#86B4F2; --code-bg:#0F1419; --code-ink:#D7DEE5; --mark:#4A4320;
+  --w0:#E3E8ED; --w1:#B07A52; --w9:#8995A3;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+body{margin:0;overflow-x:clip;-webkit-tap-highlight-color:transparent;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:1.075rem;line-height:1.62;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--link);text-underline-offset:.18em;text-decoration-thickness:1px}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:3px solid var(--link);outline-offset:2px;border-radius:2px}
+.skip{position:absolute;left:-999px;top:0;background:var(--ink);color:var(--paper);padding:.5rem 1rem;z-index:99}
+.skip:focus{left:1rem}
+
+/* ---------- layout ---------- */
+.app{display:grid;grid-template-columns:var(--nav-w) 1fr;min-height:100vh}
+nav.loom{position:sticky;top:0;height:100vh;height:100dvh;overflow-y:auto;border-right:1px solid var(--rule);background:var(--surface);
+  padding:1.4rem 0 2rem;font-family:var(--display)}
+.brand{padding:0 1.3rem 1.1rem;border-bottom:1px solid var(--rule);margin-bottom:.8rem}
+.brand b{display:block;font-size:1.32rem;letter-spacing:.01em;line-height:1.1;font-weight:600}
+.brand span{display:block;color:var(--muted);font-size:.86rem;margin-top:.25rem}
+.progress{margin:.8rem 1.3rem 0;height:6px;background:var(--rule);border-radius:3px;overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--ink);transition:width .4s}
+.progress-label{margin:.35rem 1.3rem 0;color:var(--muted);font-size:.8rem}
+nav.loom ol{list-style:none;margin:0;padding:0}
+nav.loom .grp{margin:1.1rem 1.3rem .35rem;color:var(--muted);font-size:.8rem;letter-spacing:.02em}
+nav.loom li a{display:grid;grid-template-columns:2.1rem 1fr auto;align-items:center;gap:.15rem;padding:.42rem 1rem .42rem 0;
+  color:var(--ink);text-decoration:none;font-size:.97rem;line-height:1.25;position:relative}
+nav.loom li a::before{content:"";justify-self:start;width:1.45rem;height:8px;border-radius:0 4px 4px 0;background:var(--wire,var(--w0))}
+nav.loom li a.striped::before{background:repeating-linear-gradient(135deg,var(--w8) 0 5px,var(--w8b) 5px 10px)}
+nav.loom li a.multi::before{background:linear-gradient(90deg,var(--w2),var(--w3),var(--w4),var(--w5),var(--w6),var(--w7))}
+@media (hover:hover){nav.loom li a:hover{background:color-mix(in srgb,var(--wire,var(--ink)) 9%,transparent)}}
+nav.loom li a[aria-current="page"]{background:color-mix(in srgb,var(--wire,var(--ink)) 15%,transparent);font-weight:600}
+nav.loom li a[aria-current="page"]::before{width:2rem}
+nav.loom li a .done{width:1.1rem;height:1.1rem;border:1.5px solid var(--rule);border-radius:50%;display:inline-grid;place-items:center;font-size:.7rem;color:transparent}
+nav.loom li a.ref .done{visibility:hidden}
+nav.loom li a.is-done .done{background:var(--wire,var(--ink));border-color:var(--wire,var(--ink));color:#fff}
+.nav-tools{margin:1.4rem 1.3rem 0;display:flex;gap:.5rem;flex-wrap:wrap}
+button,.btn{font-family:var(--display);font-size:.92rem;border:1.5px solid var(--ink);background:transparent;color:var(--ink);
+  padding:.45rem .8rem;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem}
+@media (hover:hover){button:hover,.btn:hover{background:var(--ink);color:var(--paper)}}
+.topbar,.scrim{display:none}
+
+main{min-width:0;overflow-x:hidden;padding:0 clamp(1.1rem,4vw,3.5rem) 6rem}
+.module{max-width:46rem}
+.js .module{display:none}
+.js .module.active{display:block}
+.no-js .module{border-bottom:3px solid var(--rule);padding-bottom:2rem;margin-bottom:2rem}
+#start.module{max-width:62rem}
+.wire-band{height:10px;margin-left:calc(-1 * clamp(1.1rem,4vw,3.5rem));width:calc(100vw - var(--nav-w));background:var(--wire);position:relative}
+.wire-band.striped{background:repeating-linear-gradient(135deg,var(--w8) 0 9px,var(--w8b) 9px 18px)}
+.wire-band.multi{background:linear-gradient(90deg,var(--w2),var(--w3),var(--w4),var(--w5),var(--w6),var(--w7),var(--w10))}
+header.mod-head{padding:2.6rem 0 1.2rem;border-bottom:1px solid var(--rule);margin-bottom:1.8rem}
+.mod-num{font-family:var(--display);color:var(--muted);font-size:1rem;margin:0 0 .4rem}
+h1,h2,h3,h4{font-family:var(--display);font-weight:600;line-height:1.15;letter-spacing:.005em}
+h1{font-size:clamp(2.1rem,4.4vw,3.05rem);margin:0 0 .8rem;font-weight:700;letter-spacing:-.005em}
+h2{font-size:1.62rem;margin:2.8rem 0 .7rem;padding-top:.2rem}
+h3{font-size:1.24rem;margin:2rem 0 .5rem}
+h4{font-size:1.05rem;margin:1.4rem 0 .3rem}
+p{margin:0 0 1.05rem}
+.lede{font-size:1.2rem;line-height:1.55;color:var(--ink)}
+.meta{font-family:var(--display);color:var(--muted);font-size:.95rem;margin:0}
+ul,ol{padding-left:1.35rem;margin:0 0 1.1rem}
+li{margin:.25rem 0}
+strong{font-weight:700}
+hr{border:0;border-top:1px solid var(--rule);margin:2.4rem 0}
+mark{background:var(--mark);color:inherit;padding:0 .15em}
+
+/* objectives */
+.objectives{border:1.5px solid var(--wire);border-radius:6px;padding:1rem 1.2rem .4rem;margin:0 0 2rem;background:var(--surface)}
+.objectives h2{margin:0 0 .5rem;font-size:1.08rem}
+.objectives ul{margin-bottom:.6rem}
+
+/* callouts */
+.note{border-left:5px solid var(--wire,var(--ink));background:var(--surface);padding:.9rem 1.15rem .2rem;margin:1.6rem 0;border-radius:0 6px 6px 0}
+.note h4{margin:0 0 .35rem;font-size:1rem}
+.note.field{--wire:var(--w6)} .note.pitfall{--wire:var(--w2)} .note.try{--wire:var(--w5)} .note.principle{--wire:var(--ink)}
+.note.field h4::before{content:"From the field: "} .note.pitfall h4::before{content:"Pitfall: "} .note.try h4::before{content:"Try it: "}
+blockquote{margin:1.4rem 0;padding:.2rem 0 .2rem 1.2rem;border-left:2px solid var(--rule);font-size:1.15rem;font-style:italic}
+blockquote cite{display:block;font-style:normal;font-family:var(--display);color:var(--muted);font-size:.9rem;margin-top:.3rem}
+
+/* code */
+code{font-family:var(--mono);font-size:.86em;background:color-mix(in srgb,var(--ink) 8%,transparent);padding:.08em .32em;border-radius:3px}
+.code{position:relative;margin:1.3rem 0 1.5rem}
+.code figcaption{font-family:var(--display);font-size:.86rem;color:var(--muted);margin-bottom:.35rem}
+pre{margin:0;background:var(--code-bg);color:var(--code-ink);padding:1rem 1.1rem;border-radius:6px;overflow-x:auto;font-size:.84rem;line-height:1.55;tab-size:4}
+pre code{background:none;padding:0;font-size:inherit;color:inherit}
+.copy{position:absolute;right:.5rem;top:1.9rem;font-size:.78rem;padding:.2rem .5rem;border-color:#5b6876;color:#cfd8e1;background:#2a3440}
+@media (hover:hover){.copy:hover{background:#cfd8e1;color:#1E2630}}
+pre .c{color:#8b98a6;font-style:italic} pre .k{color:#f0a868} pre .s{color:#a9d18e} pre .f{color:#8cc4ff}
+
+/* tables */
+.tbl{overflow-x:auto;margin:1.3rem 0 1.6rem}
+table{border-collapse:collapse;width:100%;font-size:.95rem;line-height:1.45}
+th,td{text-align:left;vertical-align:top;padding:.55rem .7rem;border-bottom:1px solid var(--rule)}
+th{font-family:var(--display);font-weight:600;border-bottom:2px solid var(--ink);white-space:nowrap}
+td code{white-space:nowrap}
+
+/* figures */
+figure.diagram{margin:1.8rem 0;padding:1rem;background:var(--surface);border:1px solid var(--rule);border-radius:6px}
+figure.diagram svg{display:block;width:100%;height:auto}
+figure.diagram figcaption{font-family:var(--display);font-size:.9rem;color:var(--muted);margin-top:.6rem}
+svg text{font-family:var(--display);fill:var(--ink)}
+svg .muted{fill:var(--muted)}
+svg .box{fill:var(--paper);stroke:var(--ink);stroke-width:1.5}
+svg .ln{stroke:var(--ink);stroke-width:1.5;fill:none}
+
+/* takeaways */
+.takeaways{background:var(--ink);color:var(--paper);border-radius:6px;padding:1.2rem 1.4rem .5rem;margin:2.6rem 0 1.6rem}
+.takeaways h2{margin:0 0 .6rem;font-size:1.25rem;color:var(--paper)}
+.takeaways li{margin:.4rem 0}
+.takeaways code{background:rgba(255,255,255,.12)}
+
+/* quiz */
+.quiz{margin:2rem 0}
+.quiz>h2{margin-bottom:.4rem}
+.q{border:1px solid var(--rule);background:var(--surface);border-radius:6px;padding:1rem 1.15rem;margin:.9rem 0}
+.q-prompt{font-weight:700;margin-bottom:.6rem}
+.q ol{list-style:none;padding:0;margin:0;display:grid;gap:.45rem}
+.q ol button{display:block;width:100%;text-align:left;font-family:var(--body);font-size:1rem;border:1.5px solid var(--rule);background:var(--paper);padding:.55rem .8rem;line-height:1.4}
+@media (hover:hover){.q ol button:hover{border-color:var(--ink);background:var(--paper);color:var(--ink)}}
+.q ol button.right{border-color:var(--w8);background:color-mix(in srgb,var(--w8) 14%,var(--paper))}
+.q ol button.wrong{border-color:var(--w2);background:color-mix(in srgb,var(--w2) 10%,var(--paper))}
+.js .q-why:not(.shown){display:none}
+.q-why{margin:.75rem 0 0;padding-top:.65rem;border-top:1px dashed var(--rule)}
+.q-why b{font-family:var(--display)}
+.quiz-score{font-family:var(--display);color:var(--muted)}
+
+/* exercise */
+.exercise{border:1.5px dashed var(--wire,var(--ink));border-radius:6px;padding:1rem 1.2rem .3rem;margin:2rem 0}
+.exercise h2{margin:0 0 .5rem;font-size:1.25rem}
+details{margin:.6rem 0 1rem}
+summary{cursor:pointer;font-family:var(--display);font-weight:600}
+
+/* module footer */
+.mod-foot{display:flex;flex-wrap:wrap;gap:.7rem;align-items:center;justify-content:space-between;border-top:1px solid var(--rule);padding-top:1.4rem;margin-top:2.6rem}
+.mod-foot .complete.on{background:var(--ink);color:var(--paper)}
+.sources{font-size:.95rem}
+.sources li{margin:.35rem 0}
+
+/* hero */
+.hero{padding:2.4rem 0 .5rem}
+.hero h1{font-size:clamp(2.4rem,5.6vw,4.1rem);margin-bottom:1rem}
+.loom-svg{margin:1.4rem 0 1rem;max-width:none}
+.loom-svg svg{width:100%;height:auto;display:block;overflow:visible}
+.loom-svg .strand{fill:none;stroke-width:7;stroke-linecap:round}
+.loom-svg .strand.draw{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:draw 1.4s cubic-bezier(.4,.1,.2,1) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.loom-svg a text{font-size:18px}
+.loom-svg a:hover text,.loom-svg a:focus text{text-decoration:underline}
+.loom-svg a:focus{outline:none}
+.loom-svg a:focus-visible rect.term{stroke:var(--link);stroke-width:3}
+.loom-svg rect.term{fill:var(--surface);stroke:var(--ink);stroke-width:1.5}
+.wide{max-width:62rem}
+.mobile-index{display:none}
+@media (max-width:700px){.loom-svg{display:none}.mobile-index{display:block}}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:1rem;margin:1.2rem 0 2rem}
+.cards div{border-top:4px solid var(--wire,var(--ink));padding:.6rem 0 0}
+.cards h3{margin:.1rem 0 .3rem;font-size:1.08rem}
+.cards p{font-size:.97rem;color:var(--muted)}
+
+dl.gloss dt{font-family:var(--display);font-weight:600;margin-top:1rem}
+dl.gloss dd{margin:.15rem 0 0 0}
+.check li{list-style:none;margin-left:-1.35rem;padding-left:1.8rem;position:relative}
+.check input{position:absolute;left:0;top:.35rem;width:1.05rem;height:1.05rem;accent-color:var(--ink)}
+
+
+/* ---------- motion ---------- */
+@keyframes modIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes bandIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes dIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes drawLn{to{stroke-dashoffset:0}}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.035)}100%{transform:scale(1)}}
+@keyframes shake{0%,100%{transform:none}20%{transform:translateX(-6px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
+@keyframes whyIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes donePop{0%{transform:scale(.4)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+@keyframes flow{from{background-position:-40% 0}to{background-position:140% 0}}
+@keyframes tabIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes tick{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
+.js .module.active{animation:modIn .38s cubic-bezier(.2,.7,.2,1) both}
+.js .module.active .wire-band{transform-origin:left center;animation:bandIn .7s cubic-bezier(.3,.7,.1,1) .05s both}
+.wire-band.flow::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent 0,rgba(255,255,255,.85) 8%,transparent 16%) no-repeat;background-size:40% 100%;animation:flow 1.1s ease-in-out 2}
+/* diagrams build themselves when scrolled into view */
+.js figure.diagram svg > :not(defs){opacity:0}
+.js figure.diagram.inview svg > :not(defs){animation:dIn .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:var(--d,0ms)}
+.js figure.diagram .ln[pathLength]{stroke-dasharray:1;stroke-dashoffset:1}
+.js figure.diagram.inview .ln[pathLength]{animation:dIn .2s both,drawLn .9s cubic-bezier(.4,.1,.2,1) both;animation-delay:var(--d,0ms)}
+.js figure.diagram:not(.inview) .live{display:none}
+/* loom: hover a terminal to trace its strand; signals run along each wire */
+.loom-svg .strand{transition:opacity .25s,stroke-width .25s}
+.loom-svg.tracing .strand{opacity:.22}
+.loom-svg.tracing .strand.hl{opacity:1;stroke-width:10}
+.loom-svg a rect.term{transition:transform .2s,stroke-width .2s;transform-box:fill-box;transform-origin:left center}
+.loom-svg a:hover rect.term,.loom-svg a:focus-visible rect.term{transform:translateX(4px);stroke-width:2.5}
+.loom-svg a text{transition:transform .2s}
+.loom-svg a:hover text,.loom-svg a:focus-visible text{transform:translateX(4px)}
+.loom-svg .signal{pointer-events:none}
+/* interactions */
+.q ol button.right{animation:pop .35s ease-out}
+.q ol button.wrong{animation:shake .4s ease-out}
+.q-why.shown{animation:whyIn .3s ease-out}
+nav.loom li a::before{transition:width .3s cubic-bezier(.3,.7,.1,1)}
+nav.loom li a.just-done .done,.mobile-index a.just-done .done{animation:donePop .45s cubic-bezier(.3,.7,.2,1.3)}
+.mod-foot .complete{transition:background .2s,color .2s}
+.mod-foot .complete.on::before{content:"✓";display:inline-block;animation:tick .3s ease-out}
+.mobile-index a::before{transform-origin:left center;animation:tabIn .5s cubic-bezier(.3,.7,.1,1) both;animation-delay:calc(var(--i,0) * 45ms + 150ms)}
+.code-tools button.ok{animation:pop .3s}
+/* reading progress */
+.readbar{position:fixed;top:0;left:var(--nav-w);right:0;height:3px;z-index:46;pointer-events:none}
+.readbar i{display:block;height:100%;width:100%;background:var(--rb,var(--ink));transform-origin:left center;transform:scaleX(0);transition:background .3s}
+@media (max-width:900px){.readbar{left:0;top:calc(59px + env(safe-area-inset-top))}}
+@media (prefers-reduced-motion: reduce){
+  .js figure.diagram svg > :not(defs){opacity:1!important}
+  .js figure.diagram .ln[pathLength]{stroke-dasharray:none!important}
+  .live,.signal{display:none!important}
+  .wire-band.flow::after{display:none}
+}
+
+/* ---------- phones and small tablets ---------- */
+.diagram-hint{display:none}
+.code-tools{position:absolute;right:.5rem;top:1.85rem;display:flex;gap:.35rem}
+.code-tools button{font-size:.78rem;padding:.25rem .55rem;border-color:#5b6876;color:#cfd8e1;background:#2a3440;min-height:0}
+pre.wrap{white-space:pre-wrap;word-break:break-word}
+@media (max-width: 900px){
+  .app{grid-template-columns:1fr}
+  .wire-band{width:100vw}
+  .topbar{display:flex;align-items:center;gap:.7rem;position:fixed;top:0;left:0;right:0;z-index:45;
+    padding:calc(.45rem + env(safe-area-inset-top)) calc(.8rem + env(safe-area-inset-right)) .45rem calc(.8rem + env(safe-area-inset-left));
+    background:color-mix(in srgb,var(--surface) 92%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--rule);font-family:var(--display)}
+  .topbar button{min-height:44px;padding:.4rem .85rem;font-size:1rem;flex:none}
+  .topbar .tb-title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.98rem;font-weight:600}
+  .topbar .tb-prog{flex:none;color:var(--muted);font-size:.85rem;font-variant-numeric:tabular-nums}
+  [id]{scroll-margin-top:calc(4.6rem + env(safe-area-inset-top))}
+  main{padding:calc(3.75rem + env(safe-area-inset-top)) calc(1.15rem + env(safe-area-inset-right)) calc(5rem + env(safe-area-inset-bottom)) calc(1.15rem + env(safe-area-inset-left))}
+  .wire-band{margin-left:calc(-1.15rem - env(safe-area-inset-left))}
+  nav.loom{position:fixed;inset:0 auto 0 0;width:min(86vw,340px);z-index:60;transform:translateX(-105%);transition:transform .25s ease;
+    padding-top:calc(1.2rem + env(safe-area-inset-top));padding-bottom:calc(2rem + env(safe-area-inset-bottom));padding-left:env(safe-area-inset-left);
+    overscroll-behavior:contain}
+  nav.loom.open{transform:none;box-shadow:8px 0 30px rgba(0,0,0,.25)}
+  .scrim{display:block;position:fixed;inset:0;z-index:55;background:rgba(10,15,20,.45);opacity:0;pointer-events:none;transition:opacity .25s}
+  .scrim.on{opacity:1;pointer-events:auto}
+  body.nav-open{overflow:hidden}
+  nav.loom li a{min-height:46px;font-size:1.02rem}
+  .nav-tools button{min-height:44px}
+  body{font-size:1.06rem;line-height:1.6}
+  header.mod-head{padding-top:1.6rem}
+  h1{font-size:2.05rem}
+  h2{font-size:1.45rem;margin-top:2.3rem}
+  .lede{font-size:1.12rem}
+  .hero h1{font-size:2.5rem}
+  /* diagrams: keep labels legible, swipe sideways */
+  figure.diagram{padding:.8rem;margin-left:-.4rem;margin-right:-.4rem}
+  .diagram-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-bottom:.4rem}
+  .diagram-scroll svg{min-width:640px}
+  .diagram-hint{display:block;font-family:var(--display);font-size:.85rem;color:var(--muted);margin:0 0 .45rem}
+  /* code */
+  .code{margin-left:-.4rem;margin-right:-.4rem}
+  pre{font-size:.8rem;padding:.9rem .85rem;border-radius:5px}
+  .code figcaption{padding-right:8.5rem;min-height:2rem}
+  .code-tools{top:.1rem}
+  .code-tools button{min-height:34px;padding:.3rem .7rem}
+  /* tables */
+  .tbl{margin-left:-.4rem;margin-right:-.4rem;-webkit-overflow-scrolling:touch}
+  table{font-size:.92rem;min-width:30rem}
+  th,td{padding:.55rem .55rem}
+  /* touch targets */
+  .q ol button{padding:.75rem .85rem;min-height:48px;font-size:1.02rem}
+  .check li{padding-left:2.2rem;margin:.6rem 0}
+  .check input{width:1.45rem;height:1.45rem;top:.15rem}
+  .mod-foot{flex-direction:column;align-items:stretch}
+  .mod-foot>span:empty{display:none}
+  .mod-foot .btn,.mod-foot button,.mod-foot>span>.btn{width:100%;justify-content:center;min-height:48px;text-align:center;font-size:1rem}
+  .mod-foot>span{display:block;order:2}
+  .mod-foot .complete{order:-1}
+  .objectives,.note,.exercise{margin-left:-.2rem;margin-right:-.2rem}
+  blockquote{font-size:1.08rem}
+  .sources li{margin:.6rem 0}
+  details summary{padding:.4rem 0}
+}
+/* phone start page: wire-tab index instead of the wide loom */
+.mobile-index{list-style:none;padding:0;margin:1.2rem 0 1rem;font-family:var(--display)}
+.mobile-index a{display:grid;grid-template-columns:2rem 1fr auto;align-items:center;min-height:50px;color:var(--ink);text-decoration:none;
+  border-bottom:1px solid var(--rule);font-size:1.05rem}
+.mobile-index a::before{content:"";width:1.4rem;height:9px;border-radius:0 4px 4px 0;background:var(--wire)}
+.mobile-index a.striped::before{background:repeating-linear-gradient(135deg,var(--w8) 0 5px,var(--w8b) 5px 10px)}
+.mobile-index a.multi::before{background:linear-gradient(90deg,var(--w2),var(--w3),var(--w4),var(--w5),var(--w6),var(--w7))}
+.mobile-index a .done{width:1.2rem;height:1.2rem;border:1.5px solid var(--rule);border-radius:50%;display:inline-grid;place-items:center;font-size:.72rem;color:transparent}
+.mobile-index a.is-done .done{background:var(--wire);border-color:var(--wire);color:#fff}
+.mobile-index a.striped.is-done .done{background:var(--w8);border-color:var(--w8)}
+.mobile-index a.multi.is-done .done{background:var(--ink);border-color:var(--ink)}
+.mobile-index small{display:block;color:var(--muted);font-size:.82rem}
+@media (hover:none){ .loom-svg a text{text-decoration:none} }
+@media print{nav.loom,.topbar,.scrim,.mod-foot,.code-tools,.diagram-hint{display:none}.module{display:block!important;page-break-after:always}.app{display:block}}
+</style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<div class="app">
+<nav class="loom" id="nav" aria-label="Course modules">
+  <div class="brand"><b>Harness Engineering</b><span>A field course on building production-grade agent harnesses</span>
+    <div class="progress" aria-hidden="true"><i id="progbar"></i></div>
+    <p class="progress-label" id="proglabel">0 of 12 modules complete</p>
+  </div>
+  <ol id="navlist">{{NAV}}</ol>
+  <div class="nav-tools">
+    <button type="button" id="theme">Switch to dark</button>
+    <button type="button" id="reset">Reset progress</button>
+  </div>
+</nav>
+<div class="topbar" role="banner"><button type="button" id="menu" aria-controls="nav" aria-expanded="false">Modules</button><span class="tb-title" id="tbtitle">Harness Engineering</span><span class="tb-prog" id="tbprog"></span></div>
+<div class="scrim" id="scrim"></div>
+<div class="readbar" aria-hidden="true"><i id="readbar"></i></div>
+<main id="content" tabindex="-1">

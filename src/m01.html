@@ -1,0 +1,146 @@
+<section class="module" id="m1" data-title="What a harness is" data-wire="var(--w1)" data-group="Foundations">
+<div class="wire-band" style="--wire:var(--w1)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 1 of 12 · 30 minutes</p>
+  <h1>What a harness is, and why it decides outcomes</h1>
+  <p class="lede">A model on its own only predicts the next token. Everything that turns that into dependable work is the harness. This module defines the term precisely, shows the evidence that the harness matters as much as the model, and gives you the map the rest of the course follows.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w1)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Define a harness and separate it from prompt engineering and context engineering.</li>
+    <li>Tell the builder harness apart from the user harness, and say which one you control.</li>
+    <li>Cite concrete evidence that changing only the harness changes results.</li>
+    <li>Name the ten components of a production harness and the job each one does.</li>
+  </ul>
+</div>
+
+<h2>The definition</h2>
+<p>The working definition that the field has settled on is blunt: an agent is a model plus a harness, and the harness is <em>everything that isn't the model</em>. LangChain's Vivek Trivedy put it as a one-liner that has since been quoted everywhere:</p>
+<blockquote>"If you're not the model, you're the harness."<cite>Vivek Trivedy, LangChain, "The Anatomy of an Agent Harness", March 2026</cite></blockquote>
+<p>That covers the system prompt, the tool definitions and the code behind them, the loop that calls the model, the filesystem and sandbox the agent works in, the hooks that run before and after each action, the memory files it reads at startup, the tests that check its work, and the logs you read when something goes wrong.</p>
+<p>Definitions that wide are easy to agree with and hard to use, so here's a sharper one to carry through the course. A harness does four jobs:</p>
+<div class="tbl"><table>
+<thead><tr><th>Job</th><th>Question it answers</th><th>Typical parts</th></tr></thead>
+<tbody>
+<tr><td><strong>Inform</strong></td><td>What does the agent know before it acts?</td><td>System prompt, AGENTS.md, skills, retrieved docs, tool descriptions</td></tr>
+<tr><td><strong>Constrain</strong></td><td>What is the agent allowed and able to do?</td><td>Tool set, sandbox, permissions, network egress rules, budgets</td></tr>
+<tr><td><strong>Verify</strong></td><td>How do we know the work is right?</td><td>Tests, linters, type checks, browser checks, evaluator agents</td></tr>
+<tr><td><strong>Correct</strong></td><td>What happens when it goes wrong?</td><td>Error messages with fixes, retry policy, loop detection, rollback via git, human escalation</td></tr>
+</tbody></table></div>
+
+<h2>Three layers of the same craft</h2>
+<p>You'll see three overlapping terms. They nest rather than compete.</p>
+<ul>
+  <li><strong>Prompt engineering</strong> asks how to phrase the instruction.</li>
+  <li><strong>Context engineering</strong> asks which tokens the model should see at each step: what to load, what to summarize, what to leave in a file. Cognition called it the number-one job of engineers building agents back in mid-2025.</li>
+  <li><strong>Harness engineering</strong> asks how the agent <em>runs</em>: what the system prevents, measures and corrects across an entire task. It includes context engineering and adds control flow, verification, safety, state, and operations.</li>
+</ul>
+<p>Birgitta Böckeler (Thoughtworks), writing on martinfowler.com, treats harness engineering as a kind of context engineering with feedback loops attached. That's a useful way to remember the relationship: context engineering is feedforward; harness engineering adds feedback.</p>
+
+<h2>Builder harness and user harness</h2>
+<p>Böckeler's other useful distinction is between two rings around the model.</p>
+<figure class="diagram">
+<svg viewBox="0 0 640 300" role="img" aria-label="Three concentric rings: the model at the center, the builder harness around it, and the user harness on the outside.">
+  <circle cx="200" cy="150" r="135" fill="color-mix(in srgb, var(--w1) 10%, transparent)" stroke="var(--w1)" stroke-width="2"/>
+  <circle cx="200" cy="150" r="88" fill="color-mix(in srgb, var(--w1) 18%, transparent)" stroke="var(--w1)" stroke-width="2"/>
+  <g class="live"><circle cx="200" cy="150" r="40" fill="none" stroke="var(--w1)" stroke-width="2" opacity="0"><animate attributeName="r" values="40;140" dur="3.2s" repeatCount="indefinite"/><animate attributeName="opacity" values=".8;0" dur="3.2s" repeatCount="indefinite"/></circle></g>
+  <circle cx="200" cy="150" r="40" fill="var(--ink)"/>
+  <text x="200" y="155" text-anchor="middle" style="fill:var(--paper);font-size:15px;font-weight:600">Model</text>
+  <text x="200" y="88" text-anchor="middle" style="font-size:13px">Builder harness</text>
+  <text x="200" y="40" text-anchor="middle" style="font-size:13px">User harness</text>
+  <line x1="335" y1="105" x2="360" y2="105" class="ln"/><line x1="288" y1="150" x2="360" y2="150" class="ln"/>
+  <text x="370" y="100" style="font-size:13px;font-weight:600">You build it for your project</text>
+  <text x="370" y="118" class="muted" style="font-size:12px">AGENTS.md / CLAUDE.md, hooks, linters, tests,</text>
+  <text x="370" y="134" class="muted" style="font-size:12px">custom tools, CI gates, sandboxes, review agents</text>
+  <text x="370" y="168" style="font-size:13px;font-weight:600">The agent's makers built it</text>
+  <text x="370" y="186" class="muted" style="font-size:12px">Claude Code, Codex, Cursor: system prompt,</text>
+  <text x="370" y="202" class="muted" style="font-size:12px">loop, file tools, compaction, default permissions</text>
+</svg>
+<figcaption>Two harness rings, after Böckeler. Most engineers spend most of their time in the outer ring; this course covers both.</figcaption>
+</figure>
+<p>When you use Claude Code or Codex, the inner ring is somebody else's product. Your leverage is the outer ring. When you build your own agent with an SDK or raw API, you own both rings, and every decision in this course is yours to make. Before arguing about "harnesses" with someone, agree on which ring you mean.</p>
+
+<h2>The evidence that the harness matters</h2>
+<p>It's tempting to treat the harness as plumbing and the model as the product. The published numbers say otherwise.</p>
+<ul>
+  <li><strong>Same model, +13.7 points.</strong> LangChain moved its coding agent from 52.8% to 66.5% on Terminal Bench 2.0, from outside the top 30 to the top 5, while keeping the model fixed at gpt-5.2-codex. They changed only the system prompt, the tools and the middleware.</li>
+  <li><strong>Same model, different harness, different rank.</strong> The same LangChain analysis notes that Opus 4.6 scores very differently on Terminal Bench 2.0 depending on which harness runs it.</li>
+  <li><strong>Up to 6×.</strong> The Stanford/MIT Meta-Harness paper (March 2026) opens by noting that changing the harness around a fixed model can produce a sixfold performance gap on the same benchmark, then shows that an agent searching over harness code can beat hand-built harnesses.</li>
+  <li><strong>A million lines with no hand-written code.</strong> OpenAI's Codex team shipped an internal product of roughly a million lines over about five months with zero manually written code, around 1,500 merged PRs, three engineers growing to seven. Their write-up, published in February 2026, is what popularized the term. Early progress was slow, they say, not because the agent was incapable but because its environment was underspecified.</li>
+</ul>
+
+<div class="note field"><h4>OpenAI's operating principle</h4>
+<p>The Codex team summarized their whole approach in four words: "Humans steer. Agents execute." When the agent struggled, they didn't ask how to make it try harder. They asked what capability or knowledge was missing from the environment, and then had the agent build that missing piece. Review comments and recurring bugs were treated as signals to change the harness, and when documentation wasn't enough, rules were promoted into code.</p></div>
+
+<h2>The mindset: every mistake is a harness bug</h2>
+<p>This is the most important idea in the course, so it gets its own heading. When an agent makes a mistake, you have two kinds of fix available:</p>
+<ol>
+  <li><strong>The local fix.</strong> Re-run it, add a line to the prompt saying "don't do X", or fix the output by hand.</li>
+  <li><strong>The structural fix.</strong> Change the system so that mistake becomes hard or impossible to repeat: a linter rule with a remediation message, a test that fails, a tool that returns a clearer error, a hook that blocks the action, a doc the agent is pointed to at the right moment.</li>
+</ol>
+<p>Local fixes don't accumulate. Structural fixes compound, because each one protects every future run. Harness engineering is the discipline of preferring the second kind and keeping a record of why each piece exists.</p>
+
+<h2>The ten components</h2>
+<p>Synthesizing the published anatomies from Anthropic, OpenAI, LangChain and others, a production harness has these parts. The module that covers each one is in the right-hand column.</p>
+<div class="tbl"><table>
+<thead><tr><th>Component</th><th>What it does</th><th>Module</th></tr></thead>
+<tbody>
+<tr><td>Control loop</td><td>Calls the model, executes actions, decides when to stop</td><td>2</td></tr>
+<tr><td>Tools and execution</td><td>The agent's hands: file edits, bash, APIs, code execution</td><td>3</td></tr>
+<tr><td>Context management</td><td>Chooses what's in the window; compaction, offloading, caching</td><td>4</td></tr>
+<tr><td>Guides</td><td>Feedforward: instructions, maps, skills, conventions</td><td>5</td></tr>
+<tr><td>Sensors</td><td>Feedback: tests, linters, reviewers, runtime signals</td><td>5</td></tr>
+<tr><td>State and memory</td><td>Progress files, plans, git, persistent notes across sessions</td><td>6</td></tr>
+<tr><td>Orchestration</td><td>Subagents, planners, evaluators, routing</td><td>7</td></tr>
+<tr><td>Isolation and policy</td><td>Sandbox, permissions, egress control, deterministic hooks</td><td>8</td></tr>
+<tr><td>Durability</td><td>Checkpoints, idempotent side effects, pause/resume, human approval</td><td>9</td></tr>
+<tr><td>Observability and evals</td><td>Traces, metrics, graded test suites, regression gates</td><td>10</td></tr>
+</tbody></table></div>
+<p>Module 11 covers how the whole assembly changes over time, and Module 12 has you build all ten.</p>
+
+<div class="note pitfall"><h4>Prompt whack-a-mole</h4>
+<p>The most common anti-pattern is a system prompt that grows by one "IMPORTANT: never…" line per incident. Within weeks it's thousands of tokens of equally shouted rules, nothing checks that any of them are followed, and they start contradicting each other. OpenAI tried a single large instruction file early on and reported exactly this: it crowded out task context, made every rule look equally important, went stale, and couldn't be checked mechanically. Module 4 covers what replaced it.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Agent = Model + Harness. The harness informs, constrains, verifies and corrects.</li>
+  <li>Context engineering is feedforward; harness engineering adds feedback and control.</li>
+  <li>Know which ring you're working in: the builder harness someone shipped, or the user harness you add.</li>
+  <li>Harness-only changes have moved benchmark scores by double digits with the model held fixed.</li>
+  <li>Treat every agent mistake as a harness bug and prefer fixes that make the mistake structurally hard to repeat.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">Your agent keeps writing database queries without parameter binding. Which fix is most "harness engineering"?</p>
+<ol><li><button>Add "ALWAYS use parameterized queries" to the system prompt in capitals</button></li>
+<li><button>Switch to a larger model</button></li>
+<li><button>Add a lint rule that flags string-built SQL and whose error message shows the parameterized form</button></li>
+<li><button>Fix the queries yourself during code review</button></li></ol>
+<p class="q-why">A lint rule is a deterministic sensor that runs on every change, and the remediation text lets the agent fix itself. The prompt line is an unverified guide, the bigger model is a guess, and manual review is a local fix that doesn't compound.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">You use Claude Code and add a <code>PreToolUse</code> hook that blocks <code>git push --force</code>. Which ring of the harness did you change?</p>
+<ol><li><button>The model</button></li><li><button>The user harness</button></li><li><button>The builder harness</button></li><li><button>Neither; hooks aren't part of the harness</button></li></ol>
+<p class="q-why">Hooks, project instruction files, linters and tests you add for your project are the user harness. The builder harness is what Anthropic ships: the loop, system prompt and built-in tools.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">What did LangChain change to move from 52.8% to 66.5% on Terminal Bench 2.0?</p>
+<ol><li><button>Only the system prompt, tools and middleware; the model stayed the same</button></li><li><button>They fine-tuned gpt-5.2-codex on the benchmark tasks</button></li><li><button>They switched from Codex to Claude Opus</button></li><li><button>They raised the context window limit</button></li></ol>
+<p class="q-why">The model was held fixed. Every gain came from harness knobs, which is why the result is cited so often.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">Which question belongs to harness engineering more than to context engineering?</p>
+<ol><li><button>Should the API docs be in the prompt or retrieved on demand?</button></li><li><button>How should the system prompt be sectioned?</button></li><li><button>Which few-shot examples should we include?</button></li><li><button>What should happen when the agent claims it's done but the tests haven't run?</button></li></ol>
+<p class="q-why">The first three are about which tokens the model sees. The last is about control flow and verification, the feedback side that harness engineering adds.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w1)"><h2>Exercise: audit a harness you already use</h2>
+<p>Pick an agent you use regularly (Claude Code, Codex, Cursor, or one you built). Make a two-column list: builder-harness parts you can observe, and user-harness parts you've added. Then sort every user-harness item into inform, constrain, verify or correct.</p>
+<p>Most people find their list is heavy on inform (instruction files) and almost empty on verify and correct. Write down the one sensor that would have caught the last mistake the agent made. You'll build it in Module 5.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://www.langchain.com/blog/the-anatomy-of-an-agent-harness">The Anatomy of an Agent Harness</a> — LangChain, March 2026</li>
+  <li><a href="https://openai.com/index/harness-engineering/">Harness engineering: leveraging Codex in an agent-first world</a> — OpenAI, February 2026</li>
+  <li><a href="https://martinfowler.com/articles/harness-engineering.html">Harness engineering for coding agent users</a> — Birgitta Böckeler, martinfowler.com, April 2026</li>
+  <li><a href="https://www.langchain.com/blog/improving-deep-agents-with-harness-engineering">Improving Deep Agents with harness engineering</a> — LangChain, February 2026</li>
+  <li><a href="https://arxiv.org/abs/2603.28052">Meta-Harness: End-to-End Optimization of Model Harnesses</a> — Lee et al., March 2026</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

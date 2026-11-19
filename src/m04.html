@@ -1,0 +1,184 @@
+<section class="module" id="m4" data-title="Context engineering in the harness" data-wire="var(--w4)" data-group="Foundations">
+<div class="wire-band" style="--wire:var(--w4)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 4 of 12 · 60 minutes</p>
+  <h1>Context: the budget you spend on every step</h1>
+  <p class="lede">The context window is the agent's entire working memory, it gets worse as it fills, and in agent workloads it's re-read on every single step. The harness decides what goes in, in what order, and what gets moved out. Getting this right improves quality and cuts cost at the same time.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w4)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Explain context rot and why agent workloads are dominated by input tokens.</li>
+    <li>Lay out a context so the prompt cache keeps hitting.</li>
+    <li>Replace a monolithic instruction file with a map and progressive disclosure.</li>
+    <li>Choose between compaction, offloading to files, recitation and subagents for long tasks.</li>
+  </ul>
+</div>
+
+<h2>Context is a finite resource with diminishing returns</h2>
+<p>Anthropic's <em>Effective context engineering for AI agents</em> describes "context rot": as the window fills, the model's ability to recall and use any given piece of it declines. Every token attends to every other token, so a longer context spreads attention thinner. The decline is gradual, not a cliff, which makes it easy to miss. A 200K-token window doesn't mean 200K tokens of equally useful working memory.</p>
+<p>The practical rule: find the smallest set of high-signal tokens that makes the next step likely to go well.</p>
+
+<h2>The economics: agents are input-bound</h2>
+<p>In a chat, input and output are comparable. In an agent loop, the whole history is re-sent every step while each step's output is short. Manus reports an average input-to-output ratio of about 100:1 over tasks of roughly 50 tool calls. That makes the prompt cache the dominant cost lever. Their example: with Claude Sonnet, cached input cost $0.30 per million tokens against $3.00 uncached, a tenfold difference, and cache hits cut time-to-first-token as well. Manus calls KV-cache hit rate the single most important metric for a production agent.</p>
+<p>Caching works on exact prefixes. Change one token and everything after it is recomputed. So the layout of your context is a design decision:</p>
+<figure class="diagram">
+<svg viewBox="0 0 680 190" role="img" aria-label="Context layout from front to back: stable system prompt and tools, session-stable project map, append-only history, and a fresh tail with the current plan.">
+  <rect x="10" y="40" width="190" height="70" fill="color-mix(in srgb,var(--w4) 30%,var(--paper))" stroke="var(--w4)" stroke-width="2"/>
+  <rect x="200" y="40" width="120" height="70" fill="color-mix(in srgb,var(--w4) 18%,var(--paper))" stroke="var(--w4)" stroke-width="2"/>
+  <rect x="320" y="40" width="250" height="70" fill="var(--paper)" stroke="var(--ink)" stroke-width="1.5"/>
+  <rect x="570" y="40" width="100" height="70" fill="color-mix(in srgb,var(--w2) 14%,var(--paper))" stroke="var(--w2)" stroke-width="2"/>
+  <g class="live"><rect x="570" y="40" width="100" height="70" fill="none" stroke="var(--w2)" stroke-width="4"><animate attributeName="opacity" values="0;.9;0" dur="2.4s" repeatCount="indefinite"/></rect></g>
+  <text x="105" y="70" text-anchor="middle" style="font-size:13px;font-weight:600">System prompt + tools</text><text x="105" y="90" text-anchor="middle" class="muted" style="font-size:12px">never changes</text>
+  <text x="260" y="70" text-anchor="middle" style="font-size:13px;font-weight:600">Project map</text><text x="260" y="90" text-anchor="middle" class="muted" style="font-size:12px">fixed per session</text>
+  <text x="445" y="70" text-anchor="middle" style="font-size:13px;font-weight:600">History</text><text x="445" y="90" text-anchor="middle" class="muted" style="font-size:12px">append-only, never edited</text>
+  <text x="620" y="70" text-anchor="middle" style="font-size:13px;font-weight:600">Tail</text><text x="620" y="90" text-anchor="middle" class="muted" style="font-size:12px">plan, reminders</text>
+  <path d="M200 125 V140 M320 125 V140" class="ln"/><text x="200" y="158" text-anchor="middle" style="font-size:12px">cache breakpoint</text><text x="330" y="176" text-anchor="middle" style="font-size:12px">cache breakpoint</text>
+  <path d="M10 25 H670" class="ln" marker-end="url(#arr4)"/><text x="12" y="18" class="muted" style="font-size:12px">front of context</text><text x="668" y="18" text-anchor="end" class="muted" style="font-size:12px">most recent</text>
+  <defs><marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+</svg>
+<figcaption>Stable at the front, volatile at the back. The tail is where the model pays the most attention, so it's also where the current plan belongs.</figcaption>
+</figure>
+<h3>Cache rules to enforce in code</h3>
+<ul>
+  <li><strong>No volatile values in the prefix.</strong> A timestamp accurate to the second at the top of the system prompt invalidates the cache on every request. If the agent needs the time, put the date (not the second) in the prompt, or give it a tool.</li>
+  <li><strong>Append, never edit.</strong> Rewriting an earlier observation breaks the cache from that point on. If something must change, append a correction.</li>
+  <li><strong>Serialize deterministically.</strong> JSON key order that varies between runs silently breaks the cache. Use <code>sort_keys=True</code> everywhere you serialize into context.</li>
+  <li><strong>Mark cache breakpoints</strong> where your provider supports them, at least at the end of the system prompt, and remember cached prefixes expire after a period of inactivity.</li>
+  <li><strong>Keep tool definitions stable</strong> for the whole run (Module 3).</li>
+</ul>
+
+<h2>The system prompt: find the right altitude</h2>
+<p>Anthropic describes two failure modes. Too low: brittle, hard-coded if-else rules that try to anticipate every case. Too high: vague guidance that assumes the model shares context it doesn't have. The target is in between, specific enough to steer and loose enough to let the model use judgment.</p>
+<ul>
+  <li>Organize it into clearly labeled sections (identity and goal, environment, tools guidance, working method, output format), using Markdown headers or XML tags.</li>
+  <li>Start minimal, run it on real tasks, and add instructions only in response to observed failures. Each line should earn its place.</li>
+  <li>Prefer a few diverse, canonical examples over a long list of edge-case rules.</li>
+</ul>
+
+<h2>Instruction files: a map, not an encyclopedia</h2>
+<p>Every coding harness reads a project file at startup (AGENTS.md, CLAUDE.md). The obvious approach is to put everything in it. OpenAI's Codex team tried that and it failed for four reasons: it crowded out the actual task, made every rule look equally important, went stale, and couldn't be checked mechanically.</p>
+<p>What replaced it was a roughly 100-line AGENTS.md that acts as a table of contents, pointing into a structured <code>docs/</code> directory that is the system of record: design docs, execution plans (active and completed), product specs, generated references such as the database schema, and top-level documents for architecture, reliability, security and a quality score per domain. Linters and CI checked the docs for freshness and cross-links, and a recurring "doc-gardening" agent opened PRs to fix docs that no longer matched the code.</p>
+<figure class="code"><figcaption>AGENTS.md as a map (illustrative)</figcaption>
+<pre><code># AGENTS.md
+You are working in the billing service. Humans set priorities; you implement, test and open PRs.
+
+## Start every task
+1. Read docs/exec-plans/active/ for anything related to your task.
+2. Run `make check` before and after changes. It must pass before you finish.
+
+## Where things are
+- Architecture and layering rules: docs/ARCHITECTURE.md   (read before adding a module)
+- Domain specs:                   docs/product-specs/index.md
+- DB schema (generated, do not edit): docs/generated/schema.md
+- Reliability rules (timeouts, retries, logging): docs/RELIABILITY.md
+- Security rules (secrets, authz):  docs/SECURITY.md
+- How to run the app locally:      docs/references/dev-env.md
+
+## Hard rules (enforced by lint; errors explain the fix)
+- Dependencies flow Types → Config → Repo → Service → Runtime → UI. Never backwards.
+- Parse external data at the boundary into typed models.
+- Structured logging only: log.info(event, **fields).
+
+## When you're stuck
+Write what's missing to docs/exec-plans/active/&lt;task&gt;.md under "Open questions" and stop.</code></pre></figure>
+<div class="note principle"><h4>If it's not in the repo, it doesn't exist</h4>
+<p>OpenAI's team put it plainly: knowledge that lives in Google Docs, Slack threads or people's heads is invisible to the agent. They moved decisions into versioned Markdown next to the code. This is the cheapest high-leverage change most teams can make.</p></div>
+
+<h2>Progressive disclosure and just-in-time retrieval</h2>
+<p>The map pattern generalizes. Load a small, stable entry point; let the agent pull detail when it needs it. Anthropic contrasts this "just-in-time" approach with retrieving everything up front: the agent holds lightweight references (file paths, queries, URLs) and loads content with tools at runtime, using names, folder structure and timestamps as cues. It's slower than pre-loading, so the common choice is a hybrid. Claude Code, for example, loads CLAUDE.md up front and explores the rest with glob and grep.</p>
+<p><strong>Skills</strong> are the packaged version of this. Only each skill's short name and description sit in context; the full instructions, scripts and references load when the agent decides the skill applies. LangChain lists this as one of its main defenses against context rot.</p>
+
+<h2>Long tasks: four techniques</h2>
+<h3>1. Compaction</h3>
+<p>When the window nears its limit, summarize the conversation and continue from the summary. Anthropic's advice is to tune the summarizer for recall first (don't lose anything important), then for precision (drop what's redundant). The lightest form is just clearing old tool results that the agent has already acted on.</p>
+<figure class="code"><figcaption>A before_model compaction middleware</figcaption>
+<pre><code>COMPACT_PROMPT = <span class="s">"""Summarize this agent session so work can continue in a fresh context.
+Keep, verbatim where possible: the original task and acceptance criteria; decisions made and why;
+files created or modified; commands that proved something works; errors hit and how they were
+resolved; open problems; the exact next step. Drop: tool output already acted on, dead ends
+that are fully explained by one line."""</span>
+
+<span class="k">class</span> <span class="f">Compaction</span>(Middleware):
+    <span class="k">def</span> <span class="f">__init__</span>(self, limit_tokens=<span class="s">140_000</span>):
+        self.limit = limit_tokens
+    <span class="k">def</span> <span class="f">before_model</span>(self, messages):
+        <span class="k">if</span> count_tokens(messages) &lt; self.limit:
+            <span class="k">return</span> messages
+        save_transcript(messages)                       <span class="c"># never lose the raw record</span>
+        summary = summarize(messages, COMPACT_PROMPT)   <span class="c"># a separate model call</span>
+        task = messages[<span class="s">0</span>]                             <span class="c"># keep the original ask verbatim</span>
+        <span class="k">return</span> [task, {<span class="s">"role"</span>: <span class="s">"assistant"</span>, <span class="s">"content"</span>: <span class="s">"Summary of work so far:\n"</span> + summary},
+                {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Continue from the summary. Re-read any file before editing it."</span>}]</code></pre></figure>
+<p>Compaction rewrites history, so it costs one cache miss each time it runs. Trigger it rarely and at a threshold, not every turn. Also make sure any pending tool call has its result before you compact, so you never split a <code>tool_use</code> from its <code>tool_result</code>.</p>
+
+<h3>2. The filesystem as memory</h3>
+<p>Manus treats the sandbox filesystem as unlimited, persistent context the agent can read and write. Large observations are dropped from the window as long as a pointer (path or URL) remains, which Manus calls restorable compression because nothing is lost. Anthropic's version is structured note-taking: the agent maintains a NOTES.md or to-do file outside the window. Their example is Claude playing Pokémon, keeping coherent progress across thousands of steps through its own notes.</p>
+
+<h3>3. Recitation: put the plan at the tail</h3>
+<p>Over a 50-step task, the original goal drifts into the middle of the context, which is where models attend least. Manus has the agent maintain a <code>todo.md</code> and rewrite it as items are completed. Each rewrite pushes the current plan to the end of the context, where attention is strongest. It's a no-cost fix for "lost in the middle" and goal drift.</p>
+
+<h3>4. Subagents with clean windows</h3>
+<p>Delegate a self-contained subtask to a fresh agent that does its exploration in its own context and returns a condensed result. Anthropic suggests these summaries are often 1,000–2,000 tokens. Module 7 covers when this helps and when it hurts.</p>
+
+<div class="tbl"><table>
+<thead><tr><th>Technique</th><th>Best for</th><th>Cost</th></tr></thead>
+<tbody>
+<tr><td>Compaction</td><td>Long back-and-forth sessions</td><td>Lossy; one cache miss per compaction</td></tr>
+<tr><td>Files and notes</td><td>Iterative work with clear milestones</td><td>Agent must be told to read and update them</td></tr>
+<tr><td>Recitation</td><td>Many-step tasks with a plan</td><td>A few tokens per rewrite</td></tr>
+<tr><td>Subagents</td><td>Parallel or exploratory research</td><td>More total tokens; context hand-off is lossy</td></tr>
+<tr><td>Context reset</td><td>Very long runs where quality degrades</td><td>Needs a structured hand-off (Module 6)</td></tr>
+</tbody></table></div>
+
+<h2>Two counter-intuitive rules</h2>
+<h3>Keep the wrong stuff in</h3>
+<p>When an action fails, the instinct is to clean up: retry silently, drop the failed attempt, reset. Manus argues the opposite. Leaving the failed action and its error in the context lets the model update its beliefs and makes it less likely to repeat the mistake. Error recovery, they note, is one of the clearest signs of real agentic behavior, and one that most benchmarks under-test.</p>
+
+<h3>Don't let the context few-shot you</h3>
+<p>Models imitate patterns in their context. On a repetitive batch (Manus's example is reviewing 20 résumés) the agent falls into a rhythm and starts over-generalizing or hallucinating to keep the pattern going. The fix is small, controlled variation in how actions and observations are serialized: alternate templates, phrasing or ordering. To keep the cache intact, apply the variation in appended observations, never in the stable prefix.</p>
+
+<div class="note pitfall"><h4>The helpful timestamp</h4>
+<p>A very common cache-killer is a system prompt that begins "Current time: 2026-11-19 09:38:12". It's dynamic, at the front, and changes every call. Measure your cache hit rate before and after moving it and you'll see why Manus singles this example out.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Context quality degrades as it fills; aim for the smallest high-signal set.</li>
+  <li>Agent loops are input-heavy, so cache hit rate drives cost and latency. Stable prefix, append-only history, deterministic serialization.</li>
+  <li>Instruction files should be maps (about 100 lines) into a versioned docs tree, checked by CI.</li>
+  <li>Disclose progressively: references and skills up front, details on demand.</li>
+  <li>For long work: compaction, files as memory, plan recitation at the tail, and subagents. Keep failures visible; vary repetitive serialization.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">Your cache hit rate is near zero. Which change is most likely the cause?</p>
+<ol><li><button>You added a <code>todo.md</code> rewrite at the end of each turn</button></li><li><button>The system prompt starts with the current time to the second</button></li><li><button>You append tool results after each call</button></li><li><button>You use 12 tools instead of 8</button></li></ol>
+<p class="q-why">A value that changes every request at the very front invalidates the entire prefix. Changes at the tail, or appended history, leave the cached prefix intact.</p></div>
+<div class="q" data-correct="2"><p class="q-prompt">Why did OpenAI's Codex team shrink AGENTS.md to about 100 lines?</p>
+<ol><li><button>The model has a hard limit on instruction file length</button></li><li><button>To save money on output tokens</button></li><li><button>A huge file crowded out task context, flattened priorities, went stale, and couldn't be checked; a map pointing into versioned docs fixed all four</button></li><li><button>Agents don't read instruction files</button></li></ol>
+<p class="q-why">The short file is a stable entry point. Detail lives in docs that CI keeps fresh and the agent reads on demand.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">What does recitation (rewriting <code>todo.md</code> each step) accomplish?</p>
+<ol><li><button>It moves the current plan to the end of the context, where the model attends most</button></li><li><button>It shrinks the context window</button></li><li><button>It improves the cache hit rate</button></li><li><button>It replaces the need for tests</button></li></ol>
+<p class="q-why">Over long tasks, the original goal sinks into the middle. Restating the plan at the tail counters drift and "lost in the middle".</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">An agent's last command failed. What does Manus recommend?</p>
+<ol><li><button>Remove the failed attempt so the context stays clean</button></li><li><button>Retry silently until it works</button></li><li><button>Reset the session</button></li><li><button>Leave the failed action and its error in context</button></li></ol>
+<p class="q-why">Visible failures let the model learn within the run. Hiding them removes exactly the evidence it needs not to repeat the mistake.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w4)"><h2>Exercise: measure, then restructure</h2>
+<ol>
+  <li>Log <code>cache_read_input_tokens</code>, <code>cache_creation_input_tokens</code> and <code>input_tokens</code> from each response in your loop and compute the hit rate for a 30-step task.</li>
+  <li>Move anything volatile out of the prefix, sort JSON keys, add a cache breakpoint after the system prompt, and measure again.</li>
+  <li>Rewrite your project instruction file as a map under 120 lines, with the detail moved into a <code>docs/</code> tree. Add a CI check that fails if a path the map references doesn't exist.</li>
+</ol>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents">Effective context engineering for AI agents</a> — Anthropic</li>
+  <li><a href="https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus">Context Engineering for AI Agents: Lessons from Building Manus</a> — Manus</li>
+  <li><a href="https://openai.com/index/harness-engineering/">Harness engineering</a> — OpenAI (the AGENTS.md and knowledge-base sections)</li>
+  <li><a href="https://cognition.ai/blog/dont-build-multi-agents">Don't Build Multi-Agents</a> — Cognition (where "context engineering" took off)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

@@ -1,0 +1,32 @@
+<section class="module" id="start" data-title="Start here" data-wire="var(--w0)" data-group="Course">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<div class="hero wide">
+  <p class="mod-num">A field course · 12 modules · about 8 hours of reading plus a capstone</p>
+  <h1>Agent = Model + Harness</h1>
+  <p class="lede" style="max-width:40rem">The model supplies the intelligence. Everything else — the loop, the tools, the context, the checks, the sandbox, the state, the logs — is the harness, and in 2026 that is where most of the difference between a demo and a production system lives. This course teaches you to build that part on purpose.</p>
+  <div class="loom-svg" aria-label="Course map: each strand of the harness is a module. Select one to open it.">{{LOOM}}</div>
+  <p class="meta">Each strand above is one module. Select a terminal to jump to it, or start at the top with Module 1.</p>
+</div>
+
+<div style="max-width:46rem">
+<h2>Who this is for</h2>
+<p>You can already call an LLM API and you've probably wired up a tool or two. You want to know what separates a toy agent from one you'd let run for six hours unattended, touch real systems, and get paged about. The examples are in Python against a generic Messages-style API (Anthropic's shape, since it's compact), but every idea transfers to other providers and frameworks.</p>
+
+<h2>How the course is built</h2>
+<p>Every module has the same parts, in the same order, so you can skim or go deep:</p>
+<ol>
+  <li><strong>Objectives</strong>: what you should be able to do afterwards.</li>
+  <li><strong>The lesson</strong>, with diagrams, code you can run, and "From the field" notes that summarize what teams at OpenAI, Anthropic, LangChain, Manus, Cognition, Stripe and Thoughtworks have published.</li>
+  <li><strong>Pitfalls</strong>: the failures that show up again and again in published traces.</li>
+  <li><strong>Takeaways</strong>, a <strong>quiz</strong> that explains every answer, and an <strong>exercise</strong>.</li>
+  <li><strong>Read the originals</strong>: primary sources for that module.</li>
+</ol>
+<p>Modules 1–5 are the foundation and should be read in order. Modules 6–11 can be taken in any order once you have the foundation. Module 12 is a capstone that has you build a production-grade harness, in seven milestones, that uses every strand.</p>
+<p>Progress is saved in this browser when you mark a module complete. Nothing leaves your machine.</p>
+
+<h2>The one-paragraph version</h2>
+<p>Treat every agent failure as a harness bug. Give the agent a small, stable map of where knowledge lives instead of an encyclopedia. Design a few high-leverage tools whose outputs are short and whose errors explain how to recover. Manage context like a scarce budget: keep the prefix stable for caching, offload bulk to files, and recite the plan near the end. Pair every guide with a sensor, and prefer deterministic sensors. Make completion a property of an artifact, not the model's opinion. Put hard boundaries in the environment rather than hoping the model behaves. Persist state outside the process so a crash costs one step, not the whole run. Trace everything, grade outcomes with evals, and re-examine the harness every time the model changes. Removing components is as important as adding them.</p>
+
+<div class="mod-foot"><span></span><a class="btn" href="#m1">Start Module 1: What a harness is</a></div>
+</div>
+</section>

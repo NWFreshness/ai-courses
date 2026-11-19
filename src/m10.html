@@ -1,0 +1,179 @@
+<section class="module" id="m10" data-title="Observability and evals" data-wire="var(--w10)" data-group="Production">
+<div class="wire-band" style="--wire:var(--w10)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 10 of 12 · 60 minutes · hands-on</p>
+  <h1>Observability and evals: seeing what the harness does</h1>
+  <p class="lede">You can't improve a harness you can't see. Traces tell you what happened in one run; metrics tell you what's happening across all of them; evals tell you whether a change made things better or worse before users find out. Together they turn harness engineering from intuition into an experimental discipline.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w10)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Instrument a harness with traces using the emerging OpenTelemetry GenAI conventions.</li>
+    <li>Pick the operational metrics that reveal harness problems early.</li>
+    <li>Build an eval suite with the right graders, and report pass@k and pass^k correctly.</li>
+    <li>Run a trace-analysis loop that turns failures into harness changes.</li>
+  </ul>
+</div>
+
+<h2>Traces: every step is a span</h2>
+<p>A trace for an agent run is a tree. The run is the root span; each model call, tool execution, subagent and compaction is a child. In a multi-agent system, a supervisor's span contains the spans of the subagents it started, each with its own model and tool children.</p>
+<p>The vendor-neutral way to record this is OpenTelemetry's GenAI semantic conventions: a <code>gen_ai.*</code> attribute namespace with span definitions for model inference, agent invocation and tool execution, plus separate conventions for MCP clients and servers. Two facts about their status as of late 2026: in June 2026 the project moved the GenAI and MCP conventions into their own repository so they can evolve independently, and they are still marked as being in development rather than stable. Expect attribute names to shift. Most observability backends (Langfuse, Arize Phoenix, Datadog LLM Observability and others) can ingest them.</p>
+<figure class="code"><figcaption>Instrumenting the loop with OpenTelemetry</figcaption>
+<pre><code><span class="k">from</span> opentelemetry <span class="k">import</span> trace
+tracer = trace.get_tracer(<span class="s">"harness"</span>, HARNESS_VERSION)
+
+<span class="k">def</span> <span class="f">traced_model_call</span>(messages, **kw):
+    <span class="k">with</span> tracer.start_as_current_span(<span class="s">f"chat {MODEL}"</span>) <span class="k">as</span> span:
+        span.set_attribute(<span class="s">"gen_ai.operation.name"</span>, <span class="s">"chat"</span>)
+        span.set_attribute(<span class="s">"gen_ai.request.model"</span>, MODEL)
+        resp = client.messages.create(model=MODEL, messages=messages, **kw)
+        u = resp.usage
+        span.set_attribute(<span class="s">"gen_ai.usage.input_tokens"</span>, u.input_tokens)
+        span.set_attribute(<span class="s">"gen_ai.usage.output_tokens"</span>, u.output_tokens)
+        span.set_attribute(<span class="s">"harness.cache_read_tokens"</span>, u.cache_read_input_tokens <span class="k">or</span> <span class="s">0</span>)
+        span.set_attribute(<span class="s">"harness.stop_reason"</span>, resp.stop_reason)
+        <span class="k">return</span> resp
+
+<span class="k">def</span> <span class="f">traced_tool</span>(block):
+    <span class="k">with</span> tracer.start_as_current_span(<span class="s">f"execute_tool {block.name}"</span>) <span class="k">as</span> span:
+        span.set_attribute(<span class="s">"gen_ai.operation.name"</span>, <span class="s">"execute_tool"</span>)
+        span.set_attribute(<span class="s">"gen_ai.tool.name"</span>, block.name)
+        out, err = run_tool(MIDDLEWARE, block)
+        span.set_attribute(<span class="s">"harness.tool.output_chars"</span>, len(out))
+        span.set_attribute(<span class="s">"harness.tool.is_error"</span>, err)
+        <span class="k">return</span> out, err
+<span class="c"># Wrap the whole run in an "invoke_agent" span carrying run_id, task id and harness version.</span></code></pre></figure>
+<p>Use the standard attribute names where they exist and your own namespace (<code>harness.*</code> above) for the rest. Decide deliberately whether to capture full prompt and response content: it's invaluable for debugging and it's also where secrets and personal data end up, so redact or sample, and keep raw transcripts in access-controlled storage.</p>
+
+<h2>Metrics that reveal harness problems</h2>
+<div class="tbl"><table>
+<thead><tr><th>Metric</th><th>What a bad value usually means</th></tr></thead>
+<tbody>
+<tr><td>Task success rate and pass^k (below)</td><td>The thing that matters; everything else explains it</td></tr>
+<tr><td>Cost and tokens per successful task</td><td>Context bloat, redundant tool calls, too much reasoning effort</td></tr>
+<tr><td>Prompt-cache hit rate</td><td>Something volatile in the prefix, edited history, unstable serialization (Module 4)</td></tr>
+<tr><td>Tool error rate, by tool</td><td>Ambiguous descriptions or unhelpful error messages (Module 3)</td></tr>
+<tr><td>Turns per task and stop-reason mix</td><td>Doom loops, early quitting, budgets set wrong</td></tr>
+<tr><td>Sensor fire rate, by sensor</td><td>A guide is missing or unclear, or a sensor never fires because it can't see anything</td></tr>
+<tr><td>Verification-gate rejections</td><td>Premature completion is happening; check whether the agent fixes it in one try</td></tr>
+<tr><td>Approval rate</td><td>Near 100% means the prompt is noise; tighten the boundary instead (Module 8)</td></tr>
+<tr><td>Time to first token, p95 run duration</td><td>Cache misses, oversized contexts, slow tools</td></tr>
+</tbody></table></div>
+<p>Böckeler raises a subtle point about sensors that never fire: it can mean quality is high, or that the sensor can't detect anything. Occasionally test sensors by planting a known violation, the same way mutation testing checks whether tests can fail.</p>
+
+<h2>Evals: the vocabulary</h2>
+<p>Anthropic's <em>Demystifying evals for AI agents</em> (January 2026) gives the terms most teams now use:</p>
+<ul>
+  <li>A <strong>task</strong> is one test case with defined inputs and success criteria.</li>
+  <li>A <strong>trial</strong> is one attempt at a task. Outputs vary between runs, so run several.</li>
+  <li>A <strong>grader</strong> scores some aspect of performance. A task can have several, each with multiple checks.</li>
+  <li>The <strong>transcript</strong> is what the agent said and did. The <strong>outcome</strong> is the final state of the environment. They're different things, and outcomes are usually what you should grade.</li>
+  <li>The <strong>eval harness</strong> runs tasks, records transcripts and applies graders. It is itself a harness, so the rest of this course applies to it.</li>
+</ul>
+
+<h3>Three kinds of grader</h3>
+<div class="tbl"><table>
+<thead><tr><th>Grader</th><th>Good for</th><th>Watch out for</th></tr></thead>
+<tbody>
+<tr><td>Code-based</td><td>Tests pass, file exists, schema valid, state of a database, exact answers</td><td>Over-strict checks that fail correct work phrased differently; brittle checks on tool-call order</td></tr>
+<tr><td>Model-based</td><td>Groundedness, completeness, tone, following a rubric</td><td>Needs a clear rubric and calibration against human judgment; non-deterministic</td></tr>
+<tr><td>Human</td><td>Calibrating the other two; subjective quality; new failure types</td><td>Slow and expensive; use sparingly and on samples</td></tr>
+</tbody></table></div>
+<p>Prefer code-based graders wherever they work, add model graders where they don't, and use periodic human review to keep both honest. Give partial credit on multi-part tasks so you can see which part regressed.</p>
+
+<h3>Capability evals and regression evals</h3>
+<p>A <strong>capability</strong> suite asks "can it do this yet?" and should contain tasks the agent often fails, so it shows progress. A <strong>regression</strong> suite asks "did we break anything?" and should contain tasks it reliably passes, run on every harness change. When a capability task becomes reliable, promote it to the regression suite.</p>
+
+<h2>pass@k versus pass^k</h2>
+<p>Because runs vary, a single pass tells you little. Two metrics answer different questions. If <em>p</em> is the per-trial success rate and trials are independent:</p>
+<ul>
+  <li><strong>pass@k</strong> = 1 − (1 − p)<sup>k</sup>: the chance that <em>at least one</em> of k tries succeeds. Right for tools where a human or a verifier picks the best of several attempts.</li>
+  <li><strong>pass^k</strong> = p<sup>k</sup>: the chance that <em>all</em> k tries succeed. Right for user-facing agents, where every run has to work.</li>
+</ul>
+<div class="tbl"><table>
+<thead><tr><th>Per-trial success p</th><th>pass@3</th><th>pass^3</th><th>pass@10</th><th>pass^10</th></tr></thead>
+<tbody>
+<tr><td>0.50</td><td>0.875</td><td>0.125</td><td>0.999</td><td>0.001</td></tr>
+<tr><td>0.80</td><td>0.992</td><td>0.512</td><td>&gt;0.999</td><td>0.107</td></tr>
+<tr><td>0.90</td><td>0.999</td><td>0.729</td><td>&gt;0.999</td><td>0.349</td></tr>
+<tr><td>0.99</td><td>&gt;0.999</td><td>0.970</td><td>&gt;0.999</td><td>0.904</td></tr>
+</tbody></table></div>
+<p>The two diverge fast. An agent that "solves 80% of tasks" will, on a given task, succeed three times in a row only about half the time. If your product promises reliability, report pass^k.</p>
+<figure class="code"><figcaption>evals.py: run trials and report both metrics</figcaption>
+<pre><code><span class="k">from</span> math <span class="k">import</span> comb
+<span class="k">from</span> concurrent.futures <span class="k">import</span> ThreadPoolExecutor
+
+<span class="k">def</span> <span class="f">pass_at_k</span>(n, c, k):          <span class="c"># unbiased estimate from n trials with c successes</span>
+    <span class="k">return</span> <span class="s">1.0</span> <span class="k">if</span> n - c &lt; k <span class="k">else</span> <span class="s">1</span> - comb(n - c, k) / comb(n, k)
+
+<span class="k">def</span> <span class="f">pass_pow_k</span>(n, c, k):         <span class="c"># chance k trials drawn without replacement all succeed</span>
+    <span class="k">return</span> comb(c, k) / comb(n, k) <span class="k">if</span> c >= k <span class="k">else</span> <span class="s">0.0</span>
+
+<span class="k">def</span> <span class="f">run_suite</span>(tasks, n_trials=<span class="s">5</span>, k=<span class="s">3</span>):
+    rows = []
+    <span class="k">for</span> t <span class="k">in</span> tasks:
+        <span class="k">with</span> ThreadPoolExecutor(n_trials) <span class="k">as</span> ex:
+            outcomes = list(ex.map(<span class="k">lambda</span> _: t.grade(run_in_fresh_sandbox(t)), range(n_trials)))
+        c = sum(o.passed <span class="k">for</span> o <span class="k">in</span> outcomes)
+        rows.append({<span class="s">"task"</span>: t.id, <span class="s">"p"</span>: c / n_trials,
+                     <span class="s">f"pass@{k}"</span>: pass_at_k(n_trials, c, k), <span class="s">f"pass^{k}"</span>: pass_pow_k(n_trials, c, k),
+                     <span class="s">"cost"</span>: sum(o.cost <span class="k">for</span> o <span class="k">in</span> outcomes) / n_trials})
+    <span class="k">return</span> rows</code></pre></figure>
+<p>Run each trial in a fresh sandbox so trials don't contaminate each other, and record the harness version with every result so you can compare versions.</p>
+
+<h2>Where tasks come from</h2>
+<p>Anthropic's advice is to start early and small: a few dozen tasks drawn from real failures beat a large synthetic set built later. Define success before you start optimizing. Teams that wait until an agent is widely used, they note, end up building evals reactively while fixing production issues.</p>
+<p>Good sources: every bug report, every trace where a sensor fired, every task a human had to finish by hand, and the five tasks you wrote in Module 3.</p>
+
+<h2>Closing the loop with trace analysis</h2>
+<p>Metrics tell you something is wrong; traces tell you what. Reading transcripts by hand doesn't scale, so LangChain turned it into an agent skill:</p>
+<ol>
+  <li>Fetch the traces from a batch of eval runs.</li>
+  <li>Spawn parallel error-analysis agents over the failures; a main agent synthesizes their findings into suggested changes.</li>
+  <li>Make targeted harness changes, rerun the suite, and keep what improves it.</li>
+</ol>
+<p>They compare it to boosting: each round focuses on the mistakes of the last. This is the loop that produced their 13.7-point gain.</p>
+<div class="note field"><h4>Automating the whole search</h4>
+<p>The Meta-Harness paper (Stanford, MIT and KRAFTON, March 2026) takes this to its conclusion. A coding agent is given a filesystem containing the source code, execution traces and scores of every previous harness candidate, proposes a new harness, and the system evaluates it. Their finding is that giving the optimizer full traces, rather than compressed summaries or scores, is what makes it work, because the information needed to trace a failure back to an earlier harness decision is usually in the raw trace. Harnesses it discovered beat hand-engineered ones on Terminal Bench 2.0 for the model they tested.</p></div>
+
+<div class="note pitfall"><h4>Overfitting the eval</h4>
+<p>Iterating against the same tasks eventually tunes the harness to those tasks. Keep a held-out set you don't look at while iterating, refresh tasks from production regularly, and be suspicious of a big jump from a small change.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Trace every model call, tool call and subagent as spans; use the OTel GenAI names but expect them to change.</li>
+  <li>Watch cost per success, cache hit rate, tool errors, turns, stop reasons and sensor fire rates.</li>
+  <li>Grade outcomes over transcripts, prefer code graders, calibrate model graders against humans.</li>
+  <li>Report pass^k for anything users depend on; pass@k flatters.</li>
+  <li>Turn failed traces into harness changes in a repeatable loop, and keep a held-out set.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">An agent has a per-trial success rate of 0.9. What's pass^3?</p>
+<ol><li><button>0.999</button></li><li><button>0.729</button></li><li><button>0.900</button></li><li><button>0.270</button></li></ol>
+<p class="q-why">0.9 × 0.9 × 0.9 = 0.729. pass@3 would be 1 − 0.1³ = 0.999.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">An eval checks that the agent called <code>search</code> before <code>edit</code>. A run edits correctly without searching (it already knew the file). What's the problem?</p>
+<ol><li><button>The agent cheated</button></li><li><button>The model is non-deterministic</button></li><li><button>The task needs more trials</button></li><li><button>The grader checks the path instead of the outcome and fails correct work</button></li></ol>
+<p class="q-why">Strict tool-order checks penalize valid alternative strategies. Grade the final state unless the path itself is the requirement.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">What did the Meta-Harness authors find mattered most for automated harness search?</p>
+<ol><li><button>Giving the proposer full code, traces and scores of prior candidates instead of compressed feedback</button></li><li><button>Using the largest possible model as the target</button></li><li><button>Running thousands of random harness variants</button></li><li><button>Optimizing only the system prompt</button></li></ol>
+<p class="q-why">Compressed feedback tends to drop the details needed to connect a failure to the harness decision that caused it.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w10)"><h2>Exercise: your first eval report</h2>
+<ol>
+  <li>Turn 20 tasks into an eval suite: the five from Module 3 plus fifteen from real failures. Give each a code-based grader on the outcome, and a model-based grader only where you must.</li>
+  <li>Run five trials per task and report p, pass@3, pass^3 and cost per task.</li>
+  <li>Pick the three worst tasks, read their traces (or have an agent summarize the failures), make one harness change, and rerun. Record the before and after in a table with the harness version.</li>
+</ol>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents">Demystifying evals for AI agents</a> — Anthropic, January 2026</li>
+  <li><a href="https://www.langchain.com/blog/improving-deep-agents-with-harness-engineering">Improving Deep Agents with harness engineering</a> — LangChain (trace analysis skill)</li>
+  <li><a href="https://arxiv.org/abs/2603.28052">Meta-Harness: End-to-End Optimization of Model Harnesses</a> — Lee et al., 2026</li>
+  <li><a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/">Semantic conventions for generative AI systems</a> — OpenTelemetry</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

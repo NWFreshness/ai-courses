@@ -1,0 +1,171 @@
+<section class="module" id="m3" data-title="Tools: the action interface" data-wire="var(--w3)" data-group="Foundations">
+<div class="wire-band" style="--wire:var(--w3)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 3 of 12 · 45 minutes · hands-on</p>
+  <h1>Tools: designing the agent's hands</h1>
+  <p class="lede">Tools are the only way an agent touches the world, and their definitions and outputs are some of the most-read tokens in its context. Good tools are few, high-level, terse in what they return, and loud about how to recover from mistakes. This module turns that into concrete design rules.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w3)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Design tools around workflows rather than mirroring API endpoints.</li>
+    <li>Shape tool outputs and errors so they spend few tokens and guide recovery.</li>
+    <li>Decide when to give the agent a general-purpose shell or code sandbox instead of many small tools.</li>
+    <li>Improve tools with an evaluation loop instead of intuition.</li>
+  </ul>
+</div>
+
+<h2>An interface for a new kind of user</h2>
+<p>Anthropic's <em>Building effective agents</em> calls the tool layer the agent–computer interface and argues it deserves as much design care as a human interface. The user here is unusual. It reads every word of your docs, has no memory between sessions, pays for every byte of output in attention, and will confidently guess when a description is ambiguous.</p>
+<p>A good test from Anthropic's context-engineering guidance: if a human engineer can't say for certain which tool fits a situation, the agent won't be able to either.</p>
+
+<h2>Seven design rules</h2>
+<p>These come mostly from Anthropic's <em>Writing effective tools for agents</em>, with field notes from others.</p>
+
+<h3>1. Build for workflows, not endpoints</h3>
+<p>Don't wrap every API endpoint one-to-one. Agents have limited context, so a single <code>schedule_event</code> tool that finds availability and books the slot beats separate list-users, list-events and create-event tools that the agent must chain together. Likewise, <code>search_logs</code> that returns matching lines beats <code>read_logs</code> that returns everything.</p>
+
+<h3>2. Namespace related tools</h3>
+<p>Group tools by service and resource with shared prefixes, such as <code>asana_search</code> and <code>asana_projects_search</code>. That helps the model pick correctly when many servers are connected. Manus adds a second benefit: consistent prefixes like <code>browser_</code> and <code>shell_</code> let the harness restrict the model to a whole group at once by constraining decoding, without touching the tool list. (More on that in Module 4.) Anthropic notes that prefix versus suffix naming can matter differently per model, so test it.</p>
+
+<h3>3. Return meaning, not identifiers</h3>
+<p>Prefer names, titles and file types over UUIDs and MIME types. Anthropic found that swapping cryptic identifiers for human-readable ones measurably improved retrieval precision and reduced hallucinated IDs. When the agent does need an ID for a follow-up call, return it alongside the readable field.</p>
+
+<h3>4. Let the agent choose verbosity</h3>
+<p>Add a <code>response_format</code> parameter with values like <code>concise</code> and <code>detailed</code>. In Anthropic's Slack example, the concise response used 72 tokens against 206 for the detailed one, which carried the IDs needed for follow-up actions. The agent asks for detail only when it needs it.</p>
+
+<h3>5. Paginate, filter, truncate, and say so</h3>
+<p>Give every potentially large output sensible defaults: a page size, a filter, a truncation limit. Claude Code caps tool responses at 25,000 tokens by default. When you truncate, tell the agent exactly how to get more or narrow its query. "Showing 50 of 4,812 matches. Add a <code>host</code> or <code>since</code> filter" is a guide; a silently clipped list is a trap.</p>
+
+<h3>6. Write errors as instructions</h3>
+<p>An opaque error code or a raw traceback makes the agent guess. A good error says what was wrong and shows a correct example. This is the same insight as OpenAI's lint messages that include fix instructions, and Böckeler highlights it as one of the most effective sensor techniques: write error text for an LLM reader.</p>
+
+<h3>7. Describe tools like you're onboarding a new hire</h3>
+<p>Explain niche terms, query syntax, and how resources relate. Use unambiguous parameter names (<code>user_id</code>, not <code>user</code>) and strict schemas. Mark destructive or open-world tools with annotations so the harness and the model can treat them differently. Small wording changes matter: Anthropic reports that precise refinements to tool descriptions alone improved Claude Sonnet 3.5's SWE-bench Verified results.</p>
+
+<h2>Before and after</h2>
+<div class="tbl"><table>
+<thead><tr><th>Weak tool</th><th>Strong tool</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td><code>get_logs(stream)</code> returns the whole stream</td><td><code>logs_search(query, host, since, limit=50, response_format)</code></td><td>Returns only what's relevant; bounded by default</td></tr>
+<tr><td><code>{"user": "a3f9…"}</code></td><td><code>{"user_name": "Dana Ortiz", "user_id": "a3f9…"}</code></td><td>The model reasons with the name and passes the ID</td></tr>
+<tr><td><code>Error 422</code></td><td><code>since must be ISO-8601, e.g. 2026-11-19T08:00:00Z</code></td><td>The agent can fix the call in one step</td></tr>
+<tr><td>Twelve CRUD tools for one service</td><td>Three task-level tools plus a read-only search</td><td>Fewer choices, fewer wrong choices, fewer tokens</td></tr>
+<tr><td>Description: "Gets data."</td><td>What it returns, when to use it, when not to, an example query</td><td>The description is the tool's only documentation</td></tr>
+</tbody></table></div>
+
+<figure class="code"><figcaption>A tool written to these rules</figcaption>
+<pre><code>LOGS_SEARCH = {
+  <span class="s">"name"</span>: <span class="s">"logs_search"</span>,
+  <span class="s">"description"</span>: (
+    <span class="s">"Search centralized syslog for matching lines. Use this to investigate an incident "</span>
+    <span class="s">"on a specific host or time window. Do NOT use it to read entire log streams.\n"</span>
+    <span class="s">"Query syntax: plain words are ANDed; quote phrases; prefix with - to exclude.\n"</span>
+    <span class="s">"Example: query='\"link down\" -flap' host='core-sw-02' since='2026-11-19T06:00:00Z'"</span>),
+  <span class="s">"input_schema"</span>: {<span class="s">"type"</span>: <span class="s">"object"</span>, <span class="s">"properties"</span>: {
+      <span class="s">"query"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>},
+      <span class="s">"host"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>, <span class="s">"description"</span>: <span class="s">"Exact hostname; omit to search all hosts"</span>},
+      <span class="s">"since"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>, <span class="s">"description"</span>: <span class="s">"ISO-8601 UTC timestamp"</span>},
+      <span class="s">"limit"</span>: {<span class="s">"type"</span>: <span class="s">"integer"</span>, <span class="s">"minimum"</span>: <span class="s">1</span>, <span class="s">"maximum"</span>: <span class="s">200</span>, <span class="s">"default"</span>: <span class="s">50</span>},
+      <span class="s">"response_format"</span>: {<span class="s">"type"</span>: <span class="s">"string"</span>, <span class="s">"enum"</span>: [<span class="s">"concise"</span>, <span class="s">"detailed"</span>], <span class="s">"default"</span>: <span class="s">"concise"</span>}},
+    <span class="s">"required"</span>: [<span class="s">"query"</span>]},
+}
+
+<span class="k">def</span> <span class="f">logs_search</span>(query, host=<span class="k">None</span>, since=<span class="k">None</span>, limit=<span class="s">50</span>, response_format=<span class="s">"concise"</span>):
+    <span class="k">try</span>:
+        since_dt = parse_iso(since) <span class="k">if</span> since <span class="k">else</span> now() - hours(<span class="s">6</span>)
+    <span class="k">except</span> ValueError:
+        <span class="k">raise</span> ToolError(<span class="s">f"since={since!r} is not ISO-8601. Use e.g. 2026-11-19T06:00:00Z."</span>)
+    hits, total = backend.search(query, host, since_dt, limit)
+    <span class="k">if</span> total == <span class="s">0</span>:
+        <span class="k">return</span> (<span class="s">f"No matches for {query!r} since {since_dt:%Y-%m-%d %H:%M}Z"</span>
+                + (<span class="s">f" on {host}"</span> <span class="k">if</span> host <span class="k">else</span> <span class="s">""</span>)
+                + <span class="s">". Try fewer terms, a wider window, or check the hostname with hosts_list."</span>)
+    fmt = (<span class="k">lambda</span> h: <span class="s">f"{h.ts:%H:%M:%S} {h.host} {h.msg[:160]}"</span>) <span class="k">if</span> response_format == <span class="s">"concise"</span> \
+          <span class="k">else</span> (<span class="k">lambda</span> h: json.dumps(h.as_dict(), sort_keys=<span class="k">True</span>))
+    body = <span class="s">"\n"</span>.join(fmt(h) <span class="k">for</span> h <span class="k">in</span> hits)
+    <span class="k">if</span> total > len(hits):
+        body += <span class="s">f"\n[showing {len(hits)} of {total}; narrow with host= or a later since=]"</span>
+    <span class="k">return</span> body</code></pre></figure>
+<p>Notice what the tool does for the agent: it defaults the time window, explains empty results, points at the next tool to try, and reports truncation with a way out. Every one of those lines replaces a turn the agent would otherwise spend guessing.</p>
+
+<h2>The universal tool: a shell or code sandbox</h2>
+<p>LangChain's anatomy puts bash and code execution near the top for a reason. With a general-purpose shell, the agent can build the tool it needs on the spot (a one-off script, a <code>jq</code> filter, a test harness) instead of being limited to what you anticipated. Coding agents work as well as they do partly because they can do this.</p>
+<p>The same idea applies to tool catalogs. When an agent is connected to many MCP servers, loading every definition up front is expensive. Anthropic has reported tool definitions consuming well over 100,000 tokens before a conversation even started. Two published fixes:</p>
+<ul>
+  <li><strong>Tools as code.</strong> Present each MCP server as a directory of typed code modules. The agent lists the directory, reads only the definitions it needs, and writes a script that calls them. Intermediate data stays in the sandbox and only the final result returns to context. In Anthropic's example (copying a meeting transcript from Google Drive into Salesforce), token use fell from about 150,000 to about 2,000, a 98.7% reduction. Cloudflare reported similar results under the name "Code Mode". A side benefit: sensitive intermediate data never passes through the model.</li>
+  <li><strong>Tool search.</strong> Keep a searchable index of tools and load definitions on demand. This is progressive disclosure, the same idea Module 4 applies to documentation and skills.</li>
+</ul>
+<p>The trade-off is that code execution needs a real sandbox (Module 8) and makes each step less predictable. For a small, fixed tool set, plain tool calls are simpler.</p>
+
+<div class="note principle"><h4>Keep the tool list stable within a run</h4>
+<p>It's tempting to add and remove tools as a task progresses. Manus advises against it: tool definitions sit near the front of the context, so changing them invalidates the prompt cache for everything after them, and earlier turns that reference a now-missing tool confuse the model into schema errors or invented calls. Their alternative is to keep the full list and <em>mask</em> which tools are allowed at each step, either by constraining decoding or by having a <code>before_tool</code> hook reject out-of-phase calls with a clear message.</p></div>
+
+<h2>Shaping big outputs: offload, don't stuff</h2>
+<p>Some outputs are legitimately huge: a full test log, a scraped page, a query result. LangChain's harness handles these by keeping the head and tail of any tool output over a token threshold in context and writing the full output to a file the agent can grep later. Manus makes the same move with what it calls restorable compression: a web page's text can be dropped from context as long as its URL stays, because the agent can fetch it again.</p>
+<figure class="code"><figcaption>An after_tool middleware that offloads large outputs</figcaption>
+<pre><code><span class="k">class</span> <span class="f">OffloadLargeOutputs</span>(Middleware):
+    <span class="k">def</span> <span class="f">__init__</span>(self, max_chars=<span class="s">12_000</span>, keep=<span class="s">3_000</span>):
+        self.max_chars, self.keep = max_chars, keep
+    <span class="k">def</span> <span class="f">after_tool</span>(self, name, args, output):
+        <span class="k">if</span> len(output) &lt;= self.max_chars:
+            <span class="k">return</span> output
+        path = ROOT / <span class="s">".harness"</span> / <span class="s">"outputs"</span> / <span class="s">f"{name}-{uuid4().hex[:8]}.txt"</span>
+        path.parent.mkdir(parents=<span class="k">True</span>, exist_ok=<span class="k">True</span>)
+        path.write_text(output)
+        rel = path.relative_to(ROOT)
+        <span class="k">return</span> (output[:self.keep]
+                + <span class="s">f"\n\n[… {len(output) - 2 * self.keep:,} chars omitted. Full output saved to {rel}. "</span>
+                  <span class="s">f"Use `run` with grep/sed on that file to inspect it.]\n\n"</span>
+                + output[-self.keep:])</code></pre></figure>
+
+<h2>Improve tools with evals, not taste</h2>
+<p>Anthropic's recommended loop for tool development is empirical:</p>
+<ol>
+  <li>Prototype the tools quickly and try them yourself.</li>
+  <li>Write realistic tasks that need many tool calls and have verifiable outcomes. Avoid verifiers so strict they reject correct answers phrased differently.</li>
+  <li>Run each task in a simple agent loop and ask the agent to explain its reasoning and any confusion.</li>
+  <li>Track accuracy, runtime, number of tool calls, tokens, and tool errors. Lots of redundant calls usually means pagination or defaults are wrong.</li>
+  <li>Hand the transcripts to a model and ask it to refactor the tools, then confirm the change on a held-out task set.</li>
+</ol>
+<p>Anthropic reports that this kind of model-driven tool refinement found improvements beyond what their own experts had written by hand.</p>
+
+<div class="note pitfall"><h4>The OpenAPI dump</h4>
+<p>Auto-generating one tool per endpoint from an OpenAPI spec feels efficient and produces dozens of overlapping tools, verbose JSON responses full of UUIDs, and errors that are just HTTP status codes. Use the spec as raw material, then design five task-level tools on top of it.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Design a few task-level tools with distinct purposes; consolidate multi-step chores.</li>
+  <li>Return readable fields, offer concise and detailed modes, bound every output, and explain truncation.</li>
+  <li>Errors should state the fix and show a correct example.</li>
+  <li>A shell or code sandbox is the most general tool; presenting large tool catalogs as code can cut tokens dramatically.</li>
+  <li>Keep the tool list stable within a run; restrict by masking or policy instead of removing.</li>
+  <li>Iterate tools against evals and transcripts.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="3"><p class="q-prompt">Your agent often calls <code>list_tickets</code>, then <code>get_ticket</code> twenty times to find one by keyword. Best fix?</p>
+<ol><li><button>Raise the turn limit</button></li><li><button>Add "be efficient" to the system prompt</button></li><li><button>Make <code>list_tickets</code> return full ticket bodies</button></li><li><button>Add a <code>tickets_search(query, status, limit)</code> tool that returns matching tickets with titles and short snippets</button></li></ol>
+<p class="q-why">A search tool consolidates the workflow and returns only relevant results. Returning every full body would flood the context instead.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">A tool's output is 400 KB. What's the best handling?</p>
+<ol><li><button>Keep the head and tail in context, save the full output to a file, and tell the agent the path</button></li><li><button>Return all of it; the context window is large</button></li><li><button>Silently return the first 2,000 characters</button></li><li><button>Return an error and ask the agent to try again</button></li></ol>
+<p class="q-why">Offloading keeps context lean without losing information, and the note tells the agent how to retrieve the rest. Silent truncation is the worst choice: the agent doesn't know anything is missing.</p></div>
+<div class="q" data-correct="2"><p class="q-prompt">Why does Manus prefer masking tools over removing them mid-task?</p>
+<ol><li><button>Removing tools is not supported by any API</button></li><li><button>Masked tools are cheaper to execute</button></li><li><button>Changing definitions invalidates the prompt cache and leaves earlier references to undefined tools</button></li><li><button>The model ignores removed tools anyway</button></li></ol>
+<p class="q-why">Tool definitions live near the front of the context. Changing them breaks the KV-cache for everything after, and history that mentions a tool that no longer exists invites schema violations.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w3)"><h2>Exercise: redesign three tools</h2>
+<p>Take three tools from an agent or MCP server you've built (or three endpoints of an API you use). For each, write the improved definition: a task-level name with a namespace, a description that says when <em>not</em> to use it, strict parameters, a <code>response_format</code> option if output varies in size, a truncation message, and two example error strings written as instructions.</p>
+<p>Then write five evaluation tasks that would exercise them, each with a checkable outcome. You'll reuse these in Module 10.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://www.anthropic.com/engineering/writing-tools-for-agents">Writing effective tools for agents — with agents</a> — Anthropic</li>
+  <li><a href="https://www.anthropic.com/engineering/code-execution-with-mcp">Code execution with MCP: building more efficient agents</a> — Anthropic, November 2025</li>
+  <li><a href="https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus">Context Engineering for AI Agents: Lessons from Building Manus</a> — Yichao "Peak" Ji, July 2025</li>
+  <li><a href="https://www.langchain.com/blog/the-anatomy-of-an-agent-harness">The Anatomy of an Agent Harness</a> — LangChain</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

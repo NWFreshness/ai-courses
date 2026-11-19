@@ -1,0 +1,172 @@
+<section class="module" id="m6" data-title="Long-running agents" data-wire="var(--w6)" data-group="Patterns">
+<div class="wire-band" style="--wire:var(--w6)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 6 of 12 · 50 minutes · hands-on</p>
+  <h1>Long-running agents: work that outlives a context window</h1>
+  <p class="lede">An agent that works for hours will cross many context windows, and each new one starts with no memory of the last. The fix that emerged from Anthropic's and OpenAI's long-running experiments isn't cleverer memory. It's to externalize state into files a fresh session can read, and to make "done" a property of those files rather than the model's opinion.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w6)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Name the three failure modes of long-running agents and the artifact that prevents each.</li>
+    <li>Build an initializer/worker harness with a feature list, progress log, startup script and git.</li>
+    <li>Choose between compaction and context resets, and implement a session driver.</li>
+    <li>Decide when a planner, generator and evaluator split is worth its cost.</li>
+  </ul>
+</div>
+
+<h2>The shift-change problem</h2>
+<p>Anthropic's <em>Effective harnesses for long-running agents</em> (November 2025) frames it with an analogy: imagine a project staffed by engineers working in shifts, where each new engineer arrives with no memory of what the previous shift did. Compaction helps but isn't enough. Even a frontier model in the Claude Agent SDK, given only a high-level prompt like "build a clone of claude.ai", fell short of a production-quality app.</p>
+<p>They saw three failure modes:</p>
+<div class="tbl"><table>
+<thead><tr><th>Failure</th><th>What happened</th><th>Countermeasure</th></tr></thead>
+<tbody>
+<tr><td>Doing too much at once</td><td>The agent tried to build everything in one go, ran out of context mid-feature, and left half-built, undocumented code that the next session had to reverse-engineer</td><td>One feature per session; commit and log before the window fills</td></tr>
+<tr><td>Premature completion</td><td>Later sessions saw lots of existing progress and declared the project finished</td><td>An explicit feature list where every item starts as failing</td></tr>
+<tr><td>Unverified features</td><td>Features marked done after a unit test or <code>curl</code>, without checking them end to end</td><td>Each feature carries end-to-end steps; verify through the real UI</td></tr>
+</tbody></table></div>
+
+<h2>The two-agent pattern</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 215" role="img" aria-label="An initializer session creates the feature list, progress file, init script and first commit. Each later worker session reads those artifacts, implements one feature, verifies it, commits and updates the progress file.">
+  <rect x="10" y="30" width="150" height="80" rx="6" fill="color-mix(in srgb,var(--w6) 20%,var(--paper))" stroke="var(--w6)" stroke-width="2"/>
+  <text x="85" y="58" text-anchor="middle" style="font-size:14px;font-weight:600">Initializer</text><text x="85" y="78" text-anchor="middle" class="muted" style="font-size:12px">runs once</text><text x="85" y="96" text-anchor="middle" class="muted" style="font-size:12px">writes the artifacts</text>
+  <g style="font-size:13px"><rect x="230" y="20" width="200" height="120" rx="6" class="box"/>
+  <text x="330" y="44" text-anchor="middle" style="font-weight:600">Shared artifacts</text>
+  <text x="250" y="68">feature_list.json</text><text x="250" y="88">progress.txt</text><text x="250" y="108">init.sh</text><text x="250" y="128">git history</text></g>
+  <g><rect x="500" y="10" width="170" height="40" rx="6" class="box"/><text x="585" y="35" text-anchor="middle" style="font-size:13px">Worker session 1</text>
+  <rect x="500" y="60" width="170" height="40" rx="6" class="box"/><text x="585" y="85" text-anchor="middle" style="font-size:13px">Worker session 2</text>
+  <rect x="500" y="110" width="170" height="40" rx="6" class="box"/><text x="585" y="135" text-anchor="middle" style="font-size:13px">Worker session n</text></g>
+  <path d="M160 70 H230" class="ln" marker-end="url(#arr6)"/>
+  <path d="M430 55 C470 55 470 30 500 30 M430 80 H500 M430 105 C470 105 470 130 500 130" class="ln" style="stroke:var(--w6);stroke-width:2"/>
+  <text x="340" y="180" text-anchor="middle" style="font-size:13px;font-weight:600">Each worker: orient → check app works → one feature → verify end to end → commit → log</text>
+  <text x="340" y="204" text-anchor="middle" class="muted" style="font-size:12px">Same system prompt, tools and harness for both roles; only the first user message differs.</text>
+  <path id="f60" d="M160 70 H230" fill="none"/><path id="f61" d="M430 55 C470 55 470 30 500 30" fill="none"/><path id="f62" d="M430 80 H500" fill="none"/><path id="f63" d="M430 105 C470 105 470 130 500 130" fill="none"/>
+  <g class="live"><circle r="5" fill="var(--w6)" stroke="var(--paper)" stroke-width="1.5" opacity="0"><animateMotion dur="1.2s" begin="0.2s;f6x.end+0.2s" fill="freeze"><mpath href="#f60"/></animateMotion><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.1;.85;1" dur="1.2s" begin="0.2s;f6x.end+0.2s"/></circle><circle r="5" fill="var(--w6)" stroke="var(--paper)" stroke-width="1.5" opacity="0"><animateMotion dur="1.2s" begin="1.6s;f6x.end+1.6s" fill="freeze"><mpath href="#f61"/></animateMotion><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.1;.85;1" dur="1.2s" begin="1.6s;f6x.end+1.6s"/></circle><circle r="5" fill="var(--w6)" stroke="var(--paper)" stroke-width="1.5" opacity="0"><animateMotion dur="1.2s" begin="2.6s;f6x.end+2.6s" fill="freeze"><mpath href="#f62"/></animateMotion><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.1;.85;1" dur="1.2s" begin="2.6s;f6x.end+2.6s"/></circle><circle r="5" fill="var(--w6)" stroke="var(--paper)" stroke-width="1.5" opacity="0"><animateMotion dur="1.2s" begin="3.6s;f6x.end+3.6s" fill="freeze"><mpath href="#f63"/></animateMotion><animate attributeName="opacity" values="0;1;1;0" keyTimes="0;.1;.85;1" dur="1.2s" begin="3.6s;f6x.end+3.6s"/></circle><rect width="0" height="0"><animate id="f6x" attributeName="x" from="0" to="0" dur="5.4s" begin="0s;f6x.end"/></rect></g>
+  <defs><marker id="arr6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+</svg>
+<figcaption>Files are the bridge between sessions. Nothing important lives only in a context window.</figcaption>
+</figure>
+<p>The <strong>initializer</strong> runs once with a specialized prompt. It expands the request into a complete feature list, writes a script that starts the development environment, creates an empty progress log, and makes the first commit. Every later session runs the <strong>worker</strong> prompt. A detail worth copying: Anthropic's two agents share the same system prompt, tools and harness. They differ only in the first user message.</p>
+
+<h3>The feature list</h3>
+<p>For the claude.ai clone, the initializer produced more than 200 features, every one initially failing. Each entry has a category, a description, end-to-end verification steps, and a single boolean.</p>
+<figure class="code"><figcaption>feature_list.json (excerpt)</figcaption>
+<pre><code>[
+  {
+    <span class="s">"id"</span>: <span class="s">"chat-017"</span>,
+    <span class="s">"category"</span>: <span class="s">"functional"</span>,
+    <span class="s">"description"</span>: <span class="s">"User can start a new chat from the sidebar"</span>,
+    <span class="s">"steps"</span>: [
+      <span class="s">"Open the app at http://localhost:5173"</span>,
+      <span class="s">"Click 'New chat' in the sidebar"</span>,
+      <span class="s">"Type 'hello' in the composer and press Enter"</span>,
+      <span class="s">"Verify a streaming assistant reply appears"</span>,
+      <span class="s">"Verify the new chat is listed at the top of the sidebar"</span>
+    ],
+    <span class="s">"passes"</span>: <span class="k">false</span>
+  }
+]</code></pre></figure>
+<p>Two rules make it work. Workers may change only the <code>passes</code> field, and the prompt says outright that removing or editing tests is unacceptable. And it's JSON rather than Markdown, because Anthropic found models were less likely to rewrite or overwrite structured JSON. Enforce the first rule in code as well: a <code>before_tool</code> hook or a pre-commit check that diffs the file and rejects any change other than <code>false → true</code>.</p>
+
+<h3>The startup routine</h3>
+<p>Every worker session begins the same way:</p>
+<ol>
+  <li>Run <code>pwd</code> to confirm the working directory.</li>
+  <li>Read the git log and the progress file to see recent work.</li>
+  <li>Read the feature list and choose the highest-priority failing feature.</li>
+  <li>Run <code>init.sh</code> to start the app, then do a basic end-to-end check that it still works. This catches bugs left by the previous session before new work piles on top.</li>
+  <li>Implement the one feature, and verify it through the UI.</li>
+  <li>Commit with a descriptive message, update the progress file, and leave the code in a clean, mergeable state.</li>
+</ol>
+<p>The init script matters more than it looks: it stops every session from spending tokens rediscovering how to run and test the project.</p>
+
+<h2>A session driver</h2>
+<figure class="code"><figcaption>driver.py: run worker sessions until the feature list is green</figcaption>
+<pre><code>WORKER_PROMPT = <span class="s">"""You are continuing a long-running project. You have no memory of earlier sessions.
+1. Run pwd. Read `git log --oneline -20` and progress.txt.
+2. Read feature_list.json. Pick the highest-priority feature with "passes": false.
+3. Run ./init.sh, then check the app's basic flow still works. If it doesn't, fix that first.
+4. Implement ONLY the chosen feature. Verify every step in its "steps" using the browser tool.
+5. Set "passes": true only for features you verified end to end. Never edit or delete other fields.
+6. Commit with a descriptive message, append a dated entry to progress.txt, then call finish."""</span>
+
+<span class="k">def</span> <span class="f">remaining</span>() -> int:
+    features = json.loads((ROOT / <span class="s">"feature_list.json"</span>).read_text())
+    <span class="k">return</span> sum(<span class="k">not</span> f[<span class="s">"passes"</span>] <span class="k">for</span> f <span class="k">in</span> features)
+
+<span class="k">def</span> <span class="f">drive</span>(spec: str, max_sessions=<span class="s">300</span>):
+    <span class="k">if not</span> (ROOT / <span class="s">"feature_list.json"</span>).exists():
+        agent(INITIALIZER_PROMPT.format(spec=spec))      <span class="c"># session 0</span>
+    stalls = <span class="s">0</span>
+    <span class="k">for</span> s <span class="k">in</span> range(max_sessions):
+        before = remaining()
+        <span class="k">if</span> before == <span class="s">0</span>:
+            <span class="k">return</span> <span class="s">"complete"</span>
+        result = agent(WORKER_PROMPT, max_turns=<span class="s">120</span>)   <span class="c"># fresh context every time</span>
+        log_session(s, result, before, remaining())
+        stalls = stalls + <span class="s">1</span> <span class="k">if</span> remaining() >= before <span class="k">else</span> <span class="s">0</span>
+        <span class="k">if</span> stalls >= <span class="s">3</span>:
+            <span class="k">return</span> <span class="s">"stalled: escalate to a human"</span>          <span class="c"># three sessions, no progress</span>
+    <span class="k">return</span> <span class="s">"session limit"</span></code></pre></figure>
+<p>The driver's completion test reads the artifact, not the model's claim. That's the core move of this module: <mark>completion is a property of the artifact</mark>. The stall detector is the long-horizon version of Module 5's loop detection.</p>
+
+<h2>Compaction or a clean reset?</h2>
+<p>There are two ways to continue past a full window. <strong>Compaction</strong> summarizes in place and keeps going. A <strong>context reset</strong> ends the session and starts a fresh one that orients itself from the artifacts, like the driver above.</p>
+<p>Anthropic's March 2026 follow-up, <em>Harness design for long-running application development</em>, found that some models degrade as the window fills in a specific way: Claude Sonnet 4.5 would start wrapping up work early, a behavior they named "context anxiety". For that model, compaction alone wasn't enough and resets with structured hand-offs worked better, at the cost of extra overhead and latency. With Opus 4.5, context anxiety had largely gone, so the later harness dropped resets.</p>
+<p>The general lesson: which technique wins depends on the model, so make it a configuration choice and test it.</p>
+
+<h3>Ralph loops</h3>
+<p>The simplest reset harness has a nickname. A "Ralph loop" (named after Ralph Wiggum and popularized by developer Geoffrey Huntley) intercepts the agent's attempt to exit and re-injects the original prompt into a fresh context, which then picks up state from the filesystem. In its crudest form it's a shell <code>while</code> loop around a CLI agent. LangChain's anatomy implements it as a hook. It works only if the state on disk is good enough to orient a fresh session, which is why the artifacts above come first.</p>
+
+<h2>Planner, generator, evaluator</h2>
+<p>The March 2026 work pushed further, borrowing the generator/discriminator split from GANs:</p>
+<ul>
+  <li>A <strong>planner</strong> expands a one-line prompt into an ambitious product spec, focused on deliverables rather than detailed technical design.</li>
+  <li>A <strong>generator</strong> builds in sprints and self-checks before handing off.</li>
+  <li>An <strong>evaluator</strong> uses the running app like a user (via Playwright) and grades each sprint against thresholds. Any failing threshold sends detailed feedback back to the generator.</li>
+  <li>Before each sprint, generator and evaluator agree a <strong>sprint contract</strong>: what "done" means for that chunk. The agents communicate through files.</li>
+</ul>
+<div class="note field"><h4>What it cost and what it bought</h4>
+<p>On a retro game-maker app with Opus 4.5, a solo agent ran for 20 minutes and cost about $9, and its core game logic didn't work. The full three-agent harness ran for 6 hours and about $200 and produced a playable app with rough edges. A later digital audio workstation build with the revised harness took about 3 hours 50 minutes and $124.70; the evaluator caught missing pieces such as clips that couldn't be dragged and stubbed-out recording. The author's caveat: the evaluator is worth its cost only for tasks beyond what the model can reliably do alone.</p></div>
+<div class="note principle"><h4>Remove scaffolding when the model outgrows it</h4>
+<p>When Opus 4.6 arrived, the same author simplified the harness: the sprint structure went, and the evaluator ran once at the end instead of after each sprint. The planner stayed, because without it the generator under-scoped the work. The closing lesson of the post is to re-examine the harness with every new model and remove components that are no longer pulling their weight. The space of useful harnesses doesn't shrink as models improve; it moves.</p></div>
+
+<h2>Plans as checked-in artifacts</h2>
+<p>OpenAI's Codex team reached the same place from a different direction. Small changes used lightweight, throwaway plans. Complex work got an execution plan checked into <code>docs/exec-plans/active/</code>, with progress and a decision log, moved to <code>completed/</code> when done, alongside a running tech-debt tracker. Single agent runs often worked on one task for more than six hours, frequently overnight. The plan file is what let a run that long stay coherent and let humans see what happened in the morning.</p>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Every session starts blank. Put state in files: feature list, progress log, init script, plans, git.</li>
+  <li>Make "done" a property of an artifact. Start every feature failing, verify end to end, and guard the file against edits.</li>
+  <li>Work one feature per session, start by checking the app still works, and end with a commit and a log entry.</li>
+  <li>Compaction versus reset depends on the model; make it configurable and test it.</li>
+  <li>Planner/generator/evaluator pays off only above the model's solo reliability. Remove pieces when a new model no longer needs them.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">Why did Anthropic store the feature list as JSON rather than Markdown?</p>
+<ol><li><button>JSON is shorter</button></li><li><button>Models were less likely to rewrite or overwrite structured JSON</button></li><li><button>The browser tool can only read JSON</button></li><li><button>Markdown can't hold verification steps</button></li></ol>
+<p class="q-why">The format choice was about robustness: the list must survive hundreds of sessions without being "helpfully" rewritten.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">A worker session's first substantive action after orienting should be…</p>
+<ol><li><button>Implementing the next feature immediately to save tokens</button></li><li><button>Rewriting the feature list to reflect current priorities</button></li><li><button>Running the whole test suite and refactoring failures</button></li><li><button>Starting the app with init.sh and checking the basic flow still works</button></li></ol>
+<p class="q-why">Catching breakage left by the previous session before building on it is cheaper than discovering it three features later.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">When Opus 4.6 arrived, what did the harness author do?</p>
+<ol><li><button>Removed the sprint structure and ran the evaluator once at the end, keeping the planner</button></li><li><button>Added more evaluator passes</button></li><li><button>Removed the planner and kept the sprints</button></li><li><button>Kept the harness unchanged</button></li></ol>
+<p class="q-why">Stronger models need less scaffolding in some places. The planner stayed because the generator still under-scoped without it.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w6)"><h2>Exercise: a two-hour build</h2>
+<p>Pick a small app (a to-do app with tags and search is plenty). Write an initializer prompt that produces 25–40 features, <code>init.sh</code> and <code>progress.txt</code>. Run the driver with worker sessions capped at 60 turns each.</p>
+<p>Add a pre-commit check that rejects any change to <code>feature_list.json</code> other than flipping <code>passes</code> from false to true. Count how many times it fires; each one is a prevented premature-completion bug.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents">Effective harnesses for long-running agents</a> — Anthropic, November 2025 (with a quickstart repo)</li>
+  <li><a href="https://www.anthropic.com/engineering/harness-design-long-running-apps">Harness design for long-running application development</a> — Anthropic, March 2026</li>
+  <li><a href="https://openai.com/index/harness-engineering/">Harness engineering</a> — OpenAI (plans as artifacts)</li>
+  <li><a href="https://www.langchain.com/blog/the-anatomy-of-an-agent-harness">The Anatomy of an Agent Harness</a> — LangChain (Ralph loops)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

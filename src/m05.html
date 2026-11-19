@@ -1,0 +1,195 @@
+<section class="module" id="m5" data-title="Guides and sensors" data-wire="var(--w5)" data-group="Foundations">
+<div class="wire-band" style="--wire:var(--w5)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 5 of 12 · 60 minutes · hands-on</p>
+  <h1>Guides and sensors: steering before, checking after</h1>
+  <p class="lede">Instructions make a good first attempt more likely. Checks catch the attempts that still go wrong and tell the agent how to fix them. A harness needs both, and the cheapest reliable checks are the boring deterministic ones you already know from software engineering, rewritten for a reader that is an LLM.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w5)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Classify any control as a guide or a sensor, and as computational or inferential.</li>
+    <li>Write sensors whose failure messages let the agent self-correct.</li>
+    <li>Build self-verification, loop-detection and time-budget middleware.</li>
+    <li>Give an agent "eyes" on a running system, and use a separate evaluator where tests can't reach.</li>
+  </ul>
+</div>
+
+<h2>The framework</h2>
+<p>Birgitta Böckeler's article on martinfowler.com gives the clearest vocabulary for this. Every control in a harness is either a <strong>guide</strong> (feedforward: it acts before the agent does, to make a good result more likely) or a <strong>sensor</strong> (feedback: it observes after the agent acts and lets it self-correct). Independently, each is either <strong>computational</strong> (deterministic, fast, runs on a CPU) or <strong>inferential</strong> (semantic, slower, non-deterministic, uses a model).</p>
+<div class="tbl"><table>
+<thead><tr><th></th><th>Guides (before the agent acts)</th><th>Sensors (after it acts)</th></tr></thead>
+<tbody>
+<tr><th>Computational</th><td>Language servers, CLIs and scripts the agent can call, codemods, project templates, type definitions</td><td>Tests, linters, type checkers, structural/architecture tests, coverage, logs, a browser driving the app</td></tr>
+<tr><th>Inferential</th><td>Principles, rules files, reference docs, how-tos, skills</td><td>Review agents, LLM-as-judge, evaluator agents with rubrics</td></tr>
+</tbody></table></div>
+<p>Böckeler's argument for needing both is worth memorizing. With feedback alone, the agent keeps making the same mistake and you keep catching it. With feedforward alone, you have rules that nobody ever verifies were followed.</p>
+<p>The economics also differ. Computational sensors are cheap enough to run on every change. Inferential ones add semantic judgment but cost more and vary from run to run, and how far you can trust them depends on using a strong enough model. Default to computational, and add inferential where nothing deterministic can see the problem.</p>
+
+<h2>Write sensors for an LLM reader</h2>
+<p>A linter that says <code>E402</code> was written for a human who knows what E402 means. A sensor in a harness is part of the agent's context, so its message should carry the fix. OpenAI's Codex team wrote custom lint rules whose errors include remediation instructions so the agent can repair the violation without asking. Böckeler singles this out as especially effective.</p>
+<figure class="code"><figcaption>A structural test for layering, with a message written for the agent</figcaption>
+<pre><code><span class="c"># tests/test_architecture.py: run in pre-commit and CI</span>
+<span class="k">import</span> ast, pathlib
+
+LAYERS = [<span class="s">"types"</span>, <span class="s">"config"</span>, <span class="s">"repo"</span>, <span class="s">"service"</span>, <span class="s">"runtime"</span>, <span class="s">"ui"</span>]   <span class="c"># may only import leftward</span>
+
+<span class="k">def</span> <span class="f">layer_of</span>(module: str) -> int | <span class="k">None</span>:
+    parts = module.split(<span class="s">"."</span>)
+    <span class="k">return</span> LAYERS.index(parts[<span class="s">1</span>]) <span class="k">if</span> len(parts) > <span class="s">1</span> <span class="k">and</span> parts[<span class="s">1</span>] <span class="k">in</span> LAYERS <span class="k">else</span> <span class="k">None</span>
+
+<span class="k">def</span> <span class="f">test_dependencies_flow_forward</span>():
+    problems = []
+    <span class="k">for</span> f <span class="k">in</span> pathlib.Path(<span class="s">"billing"</span>).rglob(<span class="s">"*.py"</span>):
+        here = layer_of(<span class="s">"."</span>.join(f.with_suffix(<span class="s">""</span>).parts))
+        <span class="k">if</span> here <span class="k">is</span> <span class="k">None</span>:
+            <span class="k">continue</span>
+        <span class="k">for</span> node <span class="k">in</span> ast.walk(ast.parse(f.read_text())):
+            <span class="k">if</span> isinstance(node, ast.ImportFrom) <span class="k">and</span> node.module:
+                there = layer_of(node.module)
+                <span class="k">if</span> there <span class="k">is not</span> <span class="k">None and</span> there > here:
+                    problems.append(
+                        <span class="s">f"{f}:{node.lineno} imports {node.module} ({LAYERS[there]}) from "</span>
+                        <span class="s">f"{LAYERS[here]}. Layers may only depend on layers to their left: "</span>
+                        <span class="s">f"{' → '.join(LAYERS)}. Fix: move the shared code down into "</span>
+                        <span class="s">f"billing.{LAYERS[here]} or lower, or pass it in through the Providers interface. "</span>
+                        <span class="s">f"See docs/ARCHITECTURE.md#layers."</span>)
+    <span class="k">assert not</span> problems, <span class="s">"\n"</span>.join(problems)</code></pre></figure>
+<p>That message names the file and line, states the rule, gives two acceptable fixes and points at the doc. The agent rarely needs a second attempt.</p>
+
+<div class="note field"><h4>Enforce invariants, not implementations</h4>
+<p>OpenAI's team enforced rules like "parse data at the boundary" without mandating a library (the model tended to choose Zod on its own). They fixed a layered model per business domain, routed cross-cutting concerns such as auth, telemetry and feature flags through one explicit Providers interface, and encoded "taste" as mechanical checks: structured logging, naming conventions, file size limits. They observed that this kind of rigor is normally postponed until an organization has hundreds of engineers, but with agents it was needed from the start.</p></div>
+
+<h2>Self-verification: the most common missing piece</h2>
+<p>Models tend to accept their first plausible solution. In LangChain's Terminal Bench traces, the most common failure was an agent re-reading its own code, deciding it looked fine, and stopping without running anything. Anthropic saw the same in long-running work: features marked complete after a unit test or a <code>curl</code>, without checking that they worked end to end. Four middlewares from LangChain's write-up address this family of failures.</p>
+<h3>Pre-completion checklist</h3>
+<p>Intercept the agent when it tries to finish and make it verify against the task spec first. This is the <code>on_stop</code> hook from Module 2. LangChain also changed the system prompt to describe a plan, build, verify, fix loop.</p>
+<h3>Local context on startup</h3>
+<p>Map the working directory and probe the environment (which Python, which tools are installed) before the first model call, and tell the agent its work will be graded by programmatic tests, so it should honor exact file paths and test edge cases rather than only the happy path.</p>
+<h3>Loop detection</h3>
+<p>Track how many times each file is edited. After N edits to the same file, add a note suggesting the agent step back and reconsider its approach. LangChain saw "doom loops" of ten or more small variations on one broken idea.</p>
+<h3>Time budgets</h3>
+<p>Agents estimate time badly. Inject warnings as the budget runs down that nudge the agent to wrap up and switch to verification.</p>
+<figure class="code"><figcaption>Loop detection and a verification gate as middleware</figcaption>
+<pre><code><span class="k">from</span> collections <span class="k">import</span> Counter
+<span class="k">import</span> time
+
+<span class="k">class</span> <span class="f">LoopDetection</span>(Middleware):
+    <span class="k">def</span> <span class="f">__init__</span>(self, threshold=<span class="s">5</span>):
+        self.edits, self.threshold = Counter(), threshold
+    <span class="k">def</span> <span class="f">after_tool</span>(self, name, args, output):
+        <span class="k">if</span> name <span class="k">in</span> (<span class="s">"edit_file"</span>, <span class="s">"write_file"</span>):
+            self.edits[args[<span class="s">"path"</span>]] += <span class="s">1</span>
+            n = self.edits[args[<span class="s">"path"</span>]]
+            <span class="k">if</span> n <span class="k">in</span> (self.threshold, self.threshold * <span class="s">2</span>):
+                output += (<span class="s">f"\n\n[harness] You have edited {args['path']} {n} times. If the same "</span>
+                           <span class="s">"test keeps failing, stop and write down why your current approach is not "</span>
+                           <span class="s">"working, then consider a different one.]"</span>)
+        <span class="k">return</span> output
+
+<span class="k">def</span> <span class="f">as_blocks</span>(content):          <span class="c"># user content may be a string or a list of blocks</span>
+    <span class="k">return</span> [{<span class="s">"type"</span>: <span class="s">"text"</span>, <span class="s">"text"</span>: content}] <span class="k">if</span> isinstance(content, str) <span class="k">else</span> list(content)
+
+<span class="k">class</span> <span class="f">TimeBudget</span>(Middleware):
+    <span class="k">def</span> <span class="f">__init__</span>(self, seconds):
+        self.start, self.budget, self.warned = time.monotonic(), seconds, <span class="k">False</span>
+    <span class="k">def</span> <span class="f">before_model</span>(self, messages):
+        used = (time.monotonic() - self.start) / self.budget
+        <span class="k">if</span> used > <span class="s">0.75</span> <span class="k">and not</span> self.warned:
+            self.warned = <span class="k">True</span>
+            messages[-<span class="s">1</span>][<span class="s">"content"</span>] = as_blocks(messages[-<span class="s">1</span>][<span class="s">"content"</span>]) + [{<span class="s">"type"</span>: <span class="s">"text"</span>,
+                <span class="s">"text"</span>: <span class="s">"[harness] 75% of the time budget is used. Finish the current change, "</span>
+                        <span class="s">"run the full test suite, and prepare to call finish."</span>}]
+        <span class="k">return</span> messages
+
+<span class="k">class</span> <span class="f">VerifyBeforeFinish</span>(Middleware):
+    <span class="k">def</span> <span class="f">__init__</span>(self, check_cmd=<span class="s">"make check"</span>, max_rejections=<span class="s">3</span>):
+        self.cmd, self.left = check_cmd, max_rejections
+    <span class="k">def</span> <span class="f">on_stop</span>(self, messages):
+        r = subprocess.run(self.cmd, shell=<span class="k">True</span>, cwd=ROOT, capture_output=<span class="k">True</span>, text=<span class="k">True</span>)
+        <span class="k">if</span> r.returncode == <span class="s">0</span> <span class="k">or</span> self.left == <span class="s">0</span>:
+            <span class="k">return</span> <span class="k">None</span>                                   <span class="c"># accept</span>
+        self.left -= <span class="s">1</span>
+        <span class="k">return</span> (<span class="s">f"[harness] `{self.cmd}` failed, so the task is not done:\n"</span>
+                + (r.stdout + r.stderr)[-<span class="s">4000</span>:]
+                + <span class="s">"\nFix the failures, re-run the check, then call finish again."</span>)</code></pre></figure>
+<p>Two things to notice. The harness notes are appended to tool output or the latest user message, never inserted into the system prompt, which keeps the cache prefix stable. And the verification gate has a rejection cap, so a sensor can't trap the agent in a loop of its own.</p>
+
+<div class="note field"><h4>Spend reasoning where it matters</h4>
+<p>LangChain also tested reasoning-effort settings for gpt-5.2-codex. Maximum ("xhigh") reasoning throughout scored 53.9%, mostly because runs timed out. "High" throughout scored 63.6%. Using xhigh for planning and verification with high for implementation, which they called a reasoning sandwich, scored 66.5%. Effort is a harness knob, and it can be set per phase.</p></div>
+
+<h2>Give the agent eyes</h2>
+<p>An agent can only verify what it can observe. Both OpenAI and Anthropic found that making the running system legible to the agent was a step change.</p>
+<ul>
+  <li><strong>Drive the real interface.</strong> Anthropic's long-running harness did poorly at verifying features until Claude was told to use browser automation (Puppeteer via MCP) and test the way a user would. That "dramatically improved performance" and surfaced bugs invisible in the code. Its blind spot was instructive: the agent couldn't see browser-native alert dialogs, so features that relied on them were buggier.</li>
+  <li><strong>One running instance per change.</strong> OpenAI made their app bootable per git worktree so the agent could launch its own copy, reproduce a bug, record a video of it, fix it, and record the fix. Chrome DevTools Protocol was wired into the agent runtime with skills for DOM snapshots, screenshots and navigation.</li>
+  <li><strong>Queryable telemetry.</strong> Each worktree got an ephemeral logs, metrics and traces stack that the agent queried with LogQL, PromQL and TraceQL, torn down when the task ended. That turns goals like "startup under 800 ms" into something the agent can test itself.</li>
+</ul>
+
+<h2>When tests can't judge: a separate evaluator</h2>
+<p>Some qualities have no binary check: whether a design is good, whether a report is complete, whether a fix is the right fix. Here an inferential sensor earns its cost, but with one critical design rule from Anthropic's harness-design work: <strong>don't ask the generator to grade itself</strong>. Agents tend to praise their own output. Tuning a separate, skeptical evaluator turned out to be far more tractable than making a generator self-critical.</p>
+<p>To make the evaluator reliable:</p>
+<ul>
+  <li><strong>Turn taste into criteria.</strong> "Is this beautiful?" is hard to grade consistently; "does this follow our design principles?" is not. Anthropic graded frontend work on design quality, originality, craft and functionality, and weighted the first two highest to push against generic output.</li>
+  <li><strong>Calibrate with examples.</strong> Give the evaluator few-shot examples with score breakdowns.</li>
+  <li><strong>Let it use the product.</strong> Their evaluator interacted with live pages through Playwright rather than reading code.</li>
+  <li><strong>Read its transcripts.</strong> Their first evaluator talked itself out of real bugs and tested superficially until tuned.</li>
+</ul>
+
+<h2>Keep quality left</h2>
+<p>Run each check as early as it's practical. Böckeler's timing ladder:</p>
+<div class="tbl"><table>
+<thead><tr><th>When</th><th>What runs</th></tr></thead>
+<tbody>
+<tr><td>Inside the agent loop, on every change</td><td>Linters, type checks, fast tests, a basic review agent</td></tr>
+<tr><td>After integration (CI)</td><td>The fast checks again, plus costlier ones: mutation testing, broader architecture review</td></tr>
+<tr><td>Continuously</td><td>Drift sensors: dead code, coverage quality, dependency scanners</td></tr>
+<tr><td>In production</td><td>SLO degradation, sampled response-quality checks, with agents proposing fixes</td></tr>
+</tbody></table></div>
+<p>Stripe's version, cited in the same article, is pre-push hooks that pick relevant linters heuristically: shift feedback as far left as you can without slowing every keystroke.</p>
+
+<h2>What sensors can and can't catch yet</h2>
+<ul>
+  <li><strong>Maintainability</strong> is the easiest. Computational sensors reliably catch duplication, complexity, coverage gaps and style. LLM judges can partly catch over-engineering.</li>
+  <li><strong>Architecture fitness</strong> works through fitness functions: a performance requirement paired with a performance test whose results feed back to the agent, or a logging standard that makes later debugging possible.</li>
+  <li><strong>Behavior</strong> is the hardest. The common pattern of a written spec plus AI-generated tests places a lot of trust in tests the agent wrote for itself. Treat agent-written tests as a sensor of limited trust, review them, and prefer tests derived from an independent source (a spec, recorded fixtures, a human-written acceptance list).</li>
+</ul>
+
+<div class="note principle"><h4>Harnessability</h4>
+<p>Some codebases are much easier to harness. Strong typing gives you a type-check sensor for free, clear module boundaries make architecture rules expressible, and opinionated frameworks shrink what the agent has to get right. Greenfield projects can design this in. Böckeler also suggests <em>harness templates</em>: if your organization has a few standard service shapes (CRUD service, event processor, dashboard), bundle guides and sensors with each one. Committing to a shape narrows the space of possible outputs, which makes comprehensive control achievable.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Pair every guide with a sensor. Prefer computational sensors; add inferential ones where nothing deterministic can see.</li>
+  <li>Write sensor messages for the agent: location, rule, fix, reference.</li>
+  <li>Make the agent verify before finishing; detect doom loops; budget time and reasoning effort by phase.</li>
+  <li>Let the agent observe the running system: a browser, its own app instance, queryable telemetry.</li>
+  <li>Use a separate, calibrated, skeptical evaluator for subjective quality. Never let the generator grade itself.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">An ArchUnit-style test that fails when a module imports from a higher layer is a…</p>
+<ol><li><button>Inferential guide</button></li><li><button>Computational guide</button></li><li><button>Computational sensor</button></li><li><button>Inferential sensor</button></li></ol>
+<p class="q-why">It runs after the change (sensor) and is deterministic (computational).</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why use a separate evaluator agent rather than asking the generator to review its work?</p>
+<ol><li><button>Generators tend to approve their own output; a standalone skeptic is easier to tune</button></li><li><button>Two agents are always cheaper than one</button></li><li><button>The generator can't read files</button></li><li><button>Evaluators don't need criteria</button></li></ol>
+<p class="q-why">Anthropic found self-evaluation unreliable and a dedicated evaluator far more tractable, especially when given explicit criteria and calibration examples.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">LangChain's most common Terminal Bench failure was…</p>
+<ol><li><button>Running out of context</button></li><li><button>Calling tools with invalid JSON</button></li><li><button>Prompt injection from task files</button></li><li><button>Re-reading its own code, judging it fine, and stopping without testing</button></li></ol>
+<p class="q-why">That's why the pre-completion checklist and plan-build-verify-fix prompting were among their first changes.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w5)"><h2>Exercise: the sensor that would have caught it</h2>
+<p>Go back to the mistake you wrote down in Module 1. Build the sensor: a lint rule, a structural test, a check script, or a review prompt. Make its failure message include the location, the rule, the fix and a doc link. Wire it into your loop's <code>VerifyBeforeFinish</code> gate and into pre-commit.</p>
+<p>Then replay the original task. Did the agent hit the sensor and fix itself in one try? If it needed several, improve the message, not the prompt.</p>
+</section>
+
+<h2>Read the originals</h2>
+<ul class="sources">
+  <li><a href="https://martinfowler.com/articles/harness-engineering.html">Harness engineering for coding agent users</a> — Birgitta Böckeler</li>
+  <li><a href="https://www.langchain.com/blog/improving-deep-agents-with-harness-engineering">Improving Deep Agents with harness engineering</a> — LangChain</li>
+  <li><a href="https://www.anthropic.com/engineering/harness-design-long-running-apps">Harness design for long-running application development</a> — Anthropic, March 2026</li>
+  <li><a href="https://openai.com/index/harness-engineering/">Harness engineering</a> — OpenAI (application legibility and architecture sections)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

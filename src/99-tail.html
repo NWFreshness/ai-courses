@@ -1,0 +1,210 @@
+</main>
+</div>
+<script>
+(function(){
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  var store = {
+    get: function(k){ try { return JSON.parse(localStorage.getItem('he-course:'+k)); } catch(e){ return null; } },
+    set: function(k,v){ try { localStorage.setItem('he-course:'+k, JSON.stringify(v)); } catch(e){} }
+  };
+  var mods = Array.prototype.slice.call(document.querySelectorAll('section.module'));
+  var core = mods.filter(function(m){ return /^m\d+$/.test(m.id); });
+  var done = store.get('done') || {};
+  var navEl = document.getElementById('nav'), menu = document.getElementById('menu'), scrim = document.getElementById('scrim');
+  var small = window.matchMedia('(max-width: 900px)');
+
+  mods.forEach(function(m){ m._link = navEl.querySelector('a[data-mod="'+m.id+'"]'); });
+
+  // footers: prev / complete / next
+  mods.forEach(function(m, i){
+    var f = m.querySelector('.mod-foot'); if (!f || m.id==='start') return;
+    f.innerHTML='';
+    var prev = mods[i-1], next = mods[i+1];
+    var left = document.createElement('span');
+    if (prev){ var p=document.createElement('a'); p.className='btn'; p.href='#'+prev.id; p.textContent='Back: '+prev.dataset.title; left.appendChild(p); }
+    f.appendChild(left);
+    if (/^m\d+$/.test(m.id)){
+      var c=document.createElement('button'); c.type='button'; c.className='complete';
+      var paint=function(){ var on=!!done[m.id]; c.classList.toggle('on',on); c.setAttribute('aria-pressed',on); c.textContent= on ? 'Completed' : 'Mark module complete'; };
+      c.addEventListener('click',function(){
+        done[m.id]=!done[m.id]; store.set('done',done); paint(); refresh();
+        if (done[m.id]){
+          var band=m.querySelector('.wire-band'); if (band){ band.classList.remove('flow'); void band.offsetWidth; band.classList.add('flow'); }
+          document.querySelectorAll('[data-mod="'+m.id+'"]').forEach(function(a){ a.classList.remove('just-done'); void a.offsetWidth; a.classList.add('just-done'); });
+        }
+      });
+      paint(); f.appendChild(c);
+    }
+    if (next){ var n=document.createElement('a'); n.className='btn'; n.href='#'+next.id; n.textContent='Next: '+next.dataset.title; f.appendChild(n); }
+  });
+
+  function refresh(){
+    var count = core.filter(function(m){ return done[m.id]; }).length;
+    document.getElementById('progbar').style.width = (100*count/core.length)+'%';
+    document.getElementById('proglabel').textContent = count+' of '+core.length+' modules complete';
+    document.getElementById('tbprog').textContent = count+'/'+core.length;
+    document.querySelectorAll('[data-mod]').forEach(function(a){
+      var id=a.dataset.mod; if (!/^m\d+$/.test(id)) return;
+      a.classList.toggle('is-done', !!done[id]);
+    });
+  }
+
+  function setNav(open){
+    navEl.classList.toggle('open', open); scrim.classList.toggle('on', open);
+    document.body.classList.toggle('nav-open', open && small.matches);
+    menu.setAttribute('aria-expanded', open);
+    if (open && small.matches){ var cur = navEl.querySelector('[aria-current]') || navEl.querySelector('a'); if (cur) { cur.scrollIntoView({block:'center'}); cur.focus({preventScroll:true}); } }
+  }
+  menu.addEventListener('click', function(){ setNav(!navEl.classList.contains('open')); });
+  scrim.addEventListener('click', function(){ setNav(false); });
+  navEl.addEventListener('click', function(e){ if (e.target.closest('a')) setNav(false); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape' && navEl.classList.contains('open')){ setNav(false); menu.focus(); } });
+
+  function show(){
+    var id = (location.hash||'#start').slice(1);
+    var target = document.getElementById(id);
+    var mod = target && target.closest ? target.closest('section.module') : null;
+    if (!mod) mod = mods[0];
+    mods.forEach(function(m){ var on = m===mod; m.classList.toggle('active', on); if (m._link){ if (on) m._link.setAttribute('aria-current','page'); else m._link.removeAttribute('aria-current'); } });
+    var num = /^m(\d+)$/.exec(mod.id);
+    document.getElementById('tbtitle').textContent = mod.id==='start' ? 'Harness Engineering' : (num ? num[1]+'. ' : '') + mod.dataset.title;
+    document.title = (mod.id==='start' ? '' : mod.dataset.title+' · ') + 'Harness Engineering';
+    var toTop = function(){ window.scrollTo(0,0); };
+    if (target === mod) { toTop(); requestAnimationFrame(toTop); setTimeout(toTop, 60); document.getElementById('content').focus({preventScroll:true}); }
+    else if (target) { requestAnimationFrame(function(){ target.scrollIntoView(); }); }
+    document.querySelector('.readbar').style.setProperty('--rb', mod.dataset.stripe ? 'var(--w8)' : (mod.dataset.multi ? 'var(--w6)' : mod.dataset.wire));
+    store.set('last', mod.id);
+    onScroll();
+    setNav(false);
+    if (mod.id==='start') drawLoom();
+  }
+  window.addEventListener('hashchange', show);
+
+  // quizzes
+  document.querySelectorAll('.quiz').forEach(function(qz){
+    var qs = qz.querySelectorAll('.q'), score = qz.querySelector('.quiz-score');
+    function tally(){
+      var answered=0, right=0;
+      qs.forEach(function(q){ if(q.dataset.answered){ answered++; if(q.dataset.answered==='right') right++; } });
+      if (score) score.textContent = answered ? (right+' of '+qs.length+' correct'+(answered<qs.length?' so far':'')) : '';
+    }
+    qs.forEach(function(q){
+      var correct = parseInt(q.dataset.correct,10), btns = q.querySelectorAll('ol button'), why = q.querySelector('.q-why');
+      why.setAttribute('aria-live','polite');
+      btns.forEach(function(b, i){
+        b.type='button';
+        b.addEventListener('click', function(){
+          if (q.dataset.answered) return;
+          var ok = i===correct;
+          q.dataset.answered = ok ? 'right':'wrong';
+          b.classList.add(ok?'right':'wrong'); btns[correct].classList.add('right');
+          btns.forEach(function(x){ x.setAttribute('aria-disabled','true'); });
+          why.insertAdjacentHTML('afterbegin','<b>'+(ok?'Correct. ':'Not quite. ')+'</b>');
+          why.classList.add('shown'); tally();
+        });
+      });
+    });
+  });
+
+  // code tools: copy (with a fallback for pages without clipboard access) and line wrapping
+  function copyText(t){
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t);
+    return new Promise(function(res, rej){
+      var ta=document.createElement('textarea'); ta.value=t; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.top='-1000px';
+      document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, t.length);
+      var ok=false; try { ok=document.execCommand('copy'); } catch(e){}
+      document.body.removeChild(ta); ok ? res() : rej();
+    });
+  }
+  var wrapPref = store.get('wrap');
+  document.querySelectorAll('figure.code').forEach(function(fig){
+    var pre=fig.querySelector('pre'), tools=document.createElement('div'); tools.className='code-tools';
+    var w=document.createElement('button'); w.type='button';
+    var setWrap=function(on){ pre.classList.toggle('wrap',on); w.textContent = on ? 'No wrap' : 'Wrap'; w.setAttribute('aria-pressed',on); };
+    setWrap(wrapPref===null ? false : !!wrapPref);
+    w.addEventListener('click',function(){ var on=!pre.classList.contains('wrap'); document.querySelectorAll('figure.code').forEach(function(f){ f._setWrap(on); }); store.set('wrap',on); });
+    fig._setWrap=setWrap;
+    var b=document.createElement('button'); b.type='button'; b.textContent='Copy';
+    b.addEventListener('click',function(){
+      copyText(pre.innerText).then(function(){ b.textContent='Copied'; b.classList.remove('ok'); void b.offsetWidth; b.classList.add('ok'); setTimeout(function(){ b.textContent='Copy'; },1500); },
+        function(){ b.textContent='Copy failed'; setTimeout(function(){ b.textContent='Copy'; },1800); });
+    });
+    tools.appendChild(w); tools.appendChild(b); fig.appendChild(tools);
+  });
+
+  // checklists
+  document.querySelectorAll('.check input[data-key]').forEach(function(cb){
+    var k='chk:'+cb.dataset.key; cb.checked=!!store.get(k);
+    cb.addEventListener('change',function(){ store.set(k, cb.checked); });
+  });
+
+  // theme
+  var themeBtn=document.getElementById('theme'), meta=document.querySelector('meta[name="theme-color"]');
+  function setTheme(t){ document.documentElement.dataset.theme=t; themeBtn.textContent = t==='dark' ? 'Switch to light' : 'Switch to dark'; if (meta) meta.content = t==='dark' ? '#141A21' : '#EDF0F2'; }
+  var saved=store.get('theme');
+  setTheme(saved || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light'));
+  themeBtn.addEventListener('click',function(){ var t=document.documentElement.dataset.theme==='dark'?'light':'dark'; setTheme(t); store.set('theme',t); });
+
+  document.getElementById('reset').addEventListener('click',function(){
+    done={}; store.set('done',done); refresh();
+    document.querySelectorAll('.check input[data-key]').forEach(function(cb){ cb.checked=false; store.set('chk:'+cb.dataset.key,false); });
+  });
+
+  // diagram hint only where the diagram actually overflows
+  function hints(){ document.querySelectorAll('.diagram-scroll').forEach(function(d){ var h=d.previousElementSibling; if (h && h.classList.contains('diagram-hint')) h.style.visibility = d.scrollWidth > d.clientWidth+4 ? 'visible' : 'hidden'; }); }
+  window.addEventListener('resize', hints);
+
+
+  // reading progress
+  var rb=document.getElementById('readbar'), ticking=false;
+  function onScroll(){ if (ticking) return; ticking=true; requestAnimationFrame(function(){ ticking=false;
+    var h=document.documentElement.scrollHeight-innerHeight; rb.style.transform='scaleX('+(h>0?Math.min(1,scrollY/h):0)+')'; }); }
+  window.addEventListener('scroll', onScroll, {passive:true});
+
+  // diagrams assemble themselves when they scroll into view
+  function reveal(fig){
+    var i=0;
+    fig.querySelectorAll('svg > :not(defs)').forEach(function(el){
+      var d = Math.min(i*55, 1100); if (el.classList.contains('live')) d += 500;
+      el.style.setProperty('--d', d+'ms'); i++;
+    });
+    fig.classList.add('inview');
+  }
+  var figs=document.querySelectorAll('figure.diagram');
+  if ('IntersectionObserver' in window){
+    var io=new IntersectionObserver(function(es){ es.forEach(function(e){ if(e.isIntersecting){ reveal(e.target); io.unobserve(e.target); } }); },{threshold:.3});
+    figs.forEach(function(f){ io.observe(f); });
+  } else figs.forEach(reveal);
+
+  // loom: trace a strand when its terminal is hovered or focused
+  var loom=document.querySelector('.loom-svg');
+  if (loom){
+    loom.querySelectorAll('a[data-i]').forEach(function(a){
+      var st=loom.querySelector('#st'+a.dataset.i);
+      var on=function(){ loom.classList.add('tracing'); st.classList.add('hl'); }, off=function(){ loom.classList.remove('tracing'); st.classList.remove('hl'); };
+      a.addEventListener('mouseenter',on); a.addEventListener('mouseleave',off); a.addEventListener('focus',on); a.addEventListener('blur',off);
+    });
+  }
+
+  // loom: draw strands once
+  var drawn=false;
+  function drawLoom(){
+    if (drawn) return; drawn=true;
+    var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.querySelectorAll('.loom-svg .strand').forEach(function(p, i){
+      if (reduce || !p.getTotalLength) return;
+      var len = Math.ceil(p.getTotalLength());
+      p.style.setProperty('--len', len);
+      p.style.animationDelay = (i*60)+'ms';
+      p.classList.add('draw');
+    });
+  }
+
+  refresh();
+  if (!location.hash && store.get('last') && document.getElementById(store.get('last'))) location.replace('#'+store.get('last'));
+  show();
+  window.addEventListener('hashchange', hints); hints();
+})();
+</script>
+</body>
+</html>
