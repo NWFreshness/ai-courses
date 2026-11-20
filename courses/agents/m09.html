@@ -169,6 +169,8 @@ class LogTracer(TracingProcessor):
     def shutdown(self): pass</code></pre></figure>
 <p>Span types tell you what happened: <code>agent</code>, <code>generation</code> (a model call), <code>function</code> (a tool call, including MCP tools), <code>mcp_tools</code> (listing a server's tools) and <code>handoff</code>. For the dashboard, a <code>gr.Blocks</code> page with one column per trader is enough: a line plot of portfolio value over time, tables of holdings and recent transactions, and a log panel, all refreshed by a <code>gr.Timer</code> every few seconds from the database. Run the floor and the dashboard as two separate processes that share only the database files.</p>
 
+<div class="sim" data-sim="trading-floor" style="--wire:var(--w8)" data-title="Run the floor" data-lede="Four simulated traders on a simulated market. Switch off the safety rules and see what breaks."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <div class="note field"><h4>Autonomy changes what can go wrong</h4>
 <p>Nobody is watching a scheduled run. That's why the design bounds every run with <code>max_turns</code>, catches each trader's errors separately, keeps every capability behind a server you control, uses simulated money, and logs everything. Before giving an autonomous agent any real power, decide what it must never do, enforce that in the tools themselves (the accounts server refusing trades it can't afford, say), and add a human checkpoint for anything you couldn't undo.</p></div>
 

@@ -73,6 +73,8 @@ enc = tiktoken.get_encoding(<span class="s">"o200k_base"</span>)            <spa
 ids = enc.encode(<span class="s">"Hi, I'm learning LLM engineering"</span>)
 print([(i, enc.decode([i])) <span class="k">for</span> i <span class="k">in</span> ids])</code></pre></figure>
 
+<div class="sim" data-sim="tokenizer" style="--wire:var(--w1)" data-title="Text as tokens" data-lede="Type or pick some text and see roughly how a model splits it."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>The illusion of memory</h2>
 <p>Tell a model your name in one call, ask for it in the next, and it has no idea. <mark>Every call is stateless.</mark> A chat product creates the impression of memory by resending the whole conversation every time: the system message, then every user and assistant message so far, then the new one. That's why long chats cost more and eventually run out of room, and it's the root of almost everything later in this course: chat UIs (Week 2), retrieval (Week 5) and agent memory (Week 8) are all ways of choosing what goes into that list.</p>
 

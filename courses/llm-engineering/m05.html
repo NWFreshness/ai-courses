@@ -77,6 +77,8 @@
 <div class="note pitfall"><h4>You are running code a model wrote</h4>
 <p>The quick way to run this project is to <code>exec()</code> Python and compile and run generated C++ directly on your computer. For a known toy program that's tolerable. For anything else it isn't: generated code can delete files, hang, or exhaust memory, and if the input came from someone else, it can be steered to do so. Run generated code in a container or a VM with no network and no access to your files, with a timeout. <a href="../harness-engineering/#m8">Harness Engineering Module 8</a> covers how.</p></div>
 
+<div class="sim" data-sim="model-race" style="--wire:var(--w4)" data-title="Race the models" data-lede="Four kinds of model port the same Python program to C++. Some don&#x27;t compile."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>What to take from the results</h2>
 <ul>
   <li><strong>Correctness before speed.</strong> A fast program with different output scores zero.</li>

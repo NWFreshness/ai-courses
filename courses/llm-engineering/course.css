@@ -27,3 +27,24 @@
 .nbmap td:first-child{white-space:nowrap}
 .nbmap code{white-space:nowrap}
 .cost{font-family:var(--display);font-size:.9rem;color:var(--muted)}
+
+/* simulators */
+.tm-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.35rem;counter-reset:m}
+.tm-list li{display:grid;grid-template-columns:5.6rem 1fr;gap:.6rem;align-items:start;padding:.4rem .6rem;border-radius:5px;background:var(--paper);border-left:4px solid var(--rule);font-size:.85rem}
+.tm-list li b{font-family:var(--mono);font-size:.78rem}
+.tm-list li code{background:none;padding:0;font-size:.78rem;overflow-wrap:anywhere}
+.tm-list li.user{border-color:var(--w1)}.tm-list li.assistant{border-color:var(--w2)}.tm-list li.tool{border-color:var(--w4)}.tm-list li.final{border-color:var(--w8)}
+.mr-lanes{display:flex;flex-direction:column;gap:.45rem}
+.mr-lane{display:grid;grid-template-columns:minmax(8rem,32%) 1fr 8.5rem;gap:.6rem;align-items:center;font-family:var(--display);font-size:.88rem}
+.mr-track{height:14px;background:color-mix(in srgb,var(--rule) 45%,transparent);border-radius:3px;overflow:hidden}
+.mr-track i{display:block;height:100%;width:0;background:var(--w4);transition-property:width;transition-timing-function:linear}
+.mr-track i.fail{background:var(--w7)}
+.mr-res{font-variant-numeric:tabular-nums}
+.rag-chunks{display:flex;flex-direction:column;gap:.35rem;max-height:24rem;overflow:auto}
+.rag-chunk{border:1px solid var(--rule);border-radius:5px;padding:.4rem .55rem;font-size:.86rem;background:var(--paper)}
+.rag-chunk b{display:block;font-family:var(--display);font-size:.76rem;color:var(--muted)}
+.rag-chunk.picked{border-color:var(--w5);border-left-width:5px;background:color-mix(in srgb,var(--w5) 8%,var(--paper))}
+.rag-chunk mark{background:var(--mark);color:inherit;padding:0 .1rem}
+.lora-vis svg{width:100%;max-width:560px;height:auto;display:block}
+.sim td.ok{color:#1C8C4E}.sim td.bad{color:#C0392B}
+@media (max-width:640px){.mr-lane{grid-template-columns:1fr 7rem}.mr-lane .mr-track{grid-column:1/-1;order:3}.tm-list li{grid-template-columns:1fr;gap:.1rem}}

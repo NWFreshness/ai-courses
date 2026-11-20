@@ -162,6 +162,8 @@ except InputGuardrailTripwireTriggered:
 <div class="note pitfall"><h4>Where guardrails actually run</h4>
 <p>Input guardrails run only on the <em>first</em> agent in a run, on the initial input. Output guardrails run only on the <em>last</em> agent's final output. Put an input guardrail on an agent that's reached by handoff, or called as a tool, and it never fires. If you need a check at a particular step, the plain alternative is often clearer: a separate <code>Runner.run</code> of a checker agent, or a check inside the tool itself.</p></div>
 
+<div class="sim" data-sim="orchestration" style="--wire:var(--w3)" data-title="Who&#x27;s in control?" data-lede="The sales-email task as a trace under three orchestration styles, with and without an input guardrail."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Project 2: a deep-research agent</h2>
 <figure class="diagram">
 <svg viewBox="0 0 680 220" role="img" aria-label="Deep research. A planner agent turns the query into a list of searches. Several search agents run in parallel, each summarizing one search. A writer agent turns the summaries into a structured report, and an emailer sends it. Python code calls each agent in turn.">

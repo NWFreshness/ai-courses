@@ -230,6 +230,8 @@ builder.add_conditional_edges("evaluator", lambda s: END if s["done"] or s["need
 sidekick = builder.compile(checkpointer=MemorySaver())</code></pre></figure>
 <p>For <code>all_tools</code>, combine the browser tools, a search tool, your push tool, Python's REPL if you're brave, and file tools scoped to a sandbox folder (<code>FileManagementToolkit(root_dir="sandbox").get_tools()</code> from <code>langchain_community</code>). In the UI, give the user two boxes, the request and the success criteria, and show the evaluator's feedback in the chat so they can see why the worker went round again.</p>
 
+<div class="sim" data-sim="graph-stepper" style="--wire:var(--w5)" data-title="Checkpoints, an interrupt and time travel" data-lede="Step a Sidekick-style graph node by node. Approve or reject the gated tool, then rewind to any checkpoint."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <div class="note pitfall"><h4>Async tools in a sync graph</h4>
 <p>MCP tools from <code>MultiServerMCPClient</code> are async-only. If any node uses them, run the graph with <code>await graph.ainvoke(...)</code>, and make your nodes <code>async def</code> with <code>await llm.ainvoke(...)</code>. Mixing sync <code>invoke</code> with async tools raises an error about calling an async tool synchronously.</p></div>
 

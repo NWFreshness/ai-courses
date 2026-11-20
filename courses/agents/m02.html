@@ -101,6 +101,8 @@
 </tbody></table></div>
 <p>An <strong>agent</strong> is what you get when the orchestrator stops being a fixed plan and becomes a loop: the model chooses an action, sees the result, and chooses again until it decides it's done. That loop is Module 2.</p>
 
+<div class="sim" data-sim="patterns" style="--wire:var(--w1)" data-title="Workflows versus an agent" data-lede="Pick a pattern and run it. Watch who chooses each step: your code, or the model."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>What autonomy costs</h2>
 <p>Handing control to the model brings three risks: an unpredictable path (you don't know which steps it'll take), unpredictable output (you can't fully specify what comes back), and unpredictable cost (a loop can run far longer than you expected). The answers are the same ones you'll practice all course: watch every run with tracing or logs, put limits on turns and spending, and add checks, called guardrails, that catch bad inputs and outputs before they matter.</p>
 

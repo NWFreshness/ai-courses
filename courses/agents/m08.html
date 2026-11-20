@@ -132,6 +132,8 @@ if __name__ == "__main__":
   <li><strong>Can you limit the tools it exposes?</strong> Most clients can filter. In the Agents SDK: <code>tool_filter=create_static_tool_filter(allowed_tool_names=["tavily_search"])</code>.</li>
 </ul>
 
+<div class="sim" data-sim="mcp-wire" style="--wire:var(--w7)" data-title="MCP on the wire" data-lede="Step through the JSON-RPC messages between a client and a server, then test a prompt injection."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Context engineering with MCP</h2>
 <p>Prompt engineering is about the words of your instructions; <strong>context engineering</strong> is about everything else the model sees when it decides: memory, retrieved documents, tool results and live data. MCP servers are a clean way to supply each kind.</p>
 <figure class="code"><figcaption>Four context sources, as server parameters</figcaption><pre><code class="hl-py">memory = {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"],

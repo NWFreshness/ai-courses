@@ -112,6 +112,8 @@
     <span class="k">return</span> <span class="s">"session limit"</span></code></pre></figure>
 <p>The driver's completion test reads the artifact, not the model's claim. That's the core move of this module: <mark>completion is a property of the artifact</mark>. The stall detector is the long-horizon version of Module 5's loop detection.</p>
 
+<div class="sim" data-sim="shift-change" style="--wire:var(--w6)" data-title="Shift changes" data-lede="A 12-feature project across sessions with a fresh context each time. Add the artifacts that carry state across."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Compaction or a clean reset?</h2>
 <p>There are two ways to continue past a full window. <strong>Compaction</strong> summarizes in place and keeps going. A <strong>context reset</strong> ends the session and starts a fresh one that orients itself from the artifacts, like the driver above.</p>
 <p>Anthropic's March 2026 follow-up, <em>Harness design for long-running application development</em>, found that some models degrade as the window fills in a specific way: Claude Sonnet 4.5 would start wrapping up work early, a behavior they named "context anxiety". For that model, compaction alone wasn't enough and resets with structured hand-offs worked better, at the cost of extra overhead and latency. With Opus 4.5, context anxiety had largely gone, so the later harness dropped resets.</p>

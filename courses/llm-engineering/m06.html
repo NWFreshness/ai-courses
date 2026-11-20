@@ -81,6 +81,8 @@ collection = PersistentClient(path=<span class="s">"vector_db"</span>).get_or_cr
     <span class="k">return</span> r.choices[<span class="s">0</span>].message.content</code></pre></figure>
 <p>LangChain can do the same with its retriever and chat-model objects, which both expose <code>invoke()</code>. Either way, RAG is less complicated than it's often made out to be. Making it <em>good</em> is the hard part, and that requires measuring it.</p>
 
+<div class="sim" data-sim="rag-playground" style="--wire:var(--w5)" data-title="Chunk it, then retrieve it" data-lede="Change chunk size, overlap and k, and see whether the chunk with the answer reaches the model."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Measuring RAG</h2>
 <p>Start with a test set. Each test is a question with a reference answer, a category, and a few keywords that a relevant chunk should contain. The reference course's set has 150 questions, mostly direct facts plus temporal, spanning, comparative, numerical, relationship and holistic ones; copying that mix of categories shows you which kinds of question your pipeline gets wrong.</p>
 <h3>Retrieval metrics: did we find the right passages?</h3>

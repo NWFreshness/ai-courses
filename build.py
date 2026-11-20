@@ -220,6 +220,9 @@ def build_course(folder):
                  "{{COURSE_JSON}}": json.dumps(public)}.items():
         head = head.replace(k, v)
     page = highlight(head + body + (ENGINE / "tail.html").read_text())
+    if (folder / "sims.js").exists():          # hands-on simulators: shared toolkit, then the course's own
+        js = (ENGINE / "sims.js").read_text() + "\n" + (folder / "sims.js").read_text()
+        page = page.replace("</body>", "<script>\n" + js + "\n</script>\n</body>", 1)
 
     # static navigation from the sections themselves
     secs = re.findall(r'<section class="module" id="([^"]+)" data-title="([^"]+)" data-wire="([^"]+)"([^>]*)>', page)

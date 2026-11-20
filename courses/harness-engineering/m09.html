@@ -19,6 +19,8 @@
 <h2>Small failure rates compound</h2>
 <p>If each step of a run succeeds 99% of the time, a 200-step run completes cleanly only about 13% of the time. Infrastructure failures (a 429, a timeout, a worker restarted by a deploy) have nothing to do with the model's intelligence, and they're the most common reason long runs die in production. Temporal's framing is that AI reliability is mostly an old distributed-systems problem: what you need is a checkpoint that captures where you are, what has happened and what's left, so recovery means resuming rather than rebuilding.</p>
 
+<div class="sim" data-sim="compound" style="--wire:var(--w9)" data-title="Small failure rates compound" data-lede="Set the per-step reliability and the task length, then add retries and durable execution."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Durable execution in one idea</h2>
 <p>Record the result of every completed step outside the process. On restart, replay the record instead of redoing the work. Module 2's reducer view already points here: if the next action is a function of the event history, the history is the only thing that must survive.</p>
 <p>You can get this from a workflow engine or build a minimal version yourself:</p>

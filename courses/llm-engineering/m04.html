@@ -72,6 +72,8 @@ inputs = tok.apply_chat_template(messages, add_generation_prompt=<span class="k"
 model.generate(inputs, max_new_tokens=<span class="s">120</span>, streamer=TextStreamer(tok, skip_prompt=<span class="k">True</span>))</code></pre></figure>
 <p>Printing <code>model</code> shows its architecture: an embedding layer, a stack of identical decoder layers with attention and feed-forward blocks, and a final layer that scores every token in the vocabulary. You'll meet these layer names again in Week 7, when QLoRA attaches small trainable adapters to some of them.</p>
 
+<div class="sim" data-sim="gpu-memory" style="--wire:var(--w3)" data-title="Will it fit on the GPU?" data-lede="Choose a model size and precision and see which cards can hold it."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>What "generation" actually is</h2>
 <p>A model scores every possible next token, one is chosen, it's appended, and the process repeats. You can watch this through an API: ask for <code>logprobs=True, top_logprobs=3</code> and each step of the reply comes back with the three most likely candidates and their log-probabilities. Plot them as a branching tree and the abstraction becomes concrete. Settings such as temperature change how the choice is made.</p>
 

@@ -129,6 +129,8 @@ price_tool = {<span class="s">"type"</span>: <span class="s">"function"</span>, 
     <span class="k">return</span> response.choices[<span class="s">0</span>].message.content</code></pre></figure>
 <p>The <code>while</code> loop, rather than a single <code>if</code>, lets the model chain several lookups. That loop is the heart of every agent you'll build, and <a href="../harness-engineering/#m2">Harness Engineering Module 2</a> takes it apart in detail.</p>
 
+<div class="sim" data-sim="tool-messages" style="--wire:var(--w2)" data-title="Inside a tool call" data-lede="Step through the messages list as FlightAI looks up a fare."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Going multimodal</h2>
 <p>Add an <code>artist(city)</code> function that calls an image-generation model for a picture of the destination, and a <code>talker(text)</code> that turns the reply into speech with a text-to-speech model, both through the same client (<code>client.images.generate</code> and <code>client.audio.speech.create</code>). Have the tool handler also return which cities were looked up, so the UI knows what to draw. Then lay out chat, image and audio side by side with <code>gr.Blocks</code>.</p>
 

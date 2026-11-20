@@ -10,7 +10,7 @@ Self-contained courses on AI engineering, published with GitHub Pages.
 | [Agentic AI](https://nwfreshness.github.io/ai-courses/agents/) | 6 weeks of agents: a loop by hand, five frameworks, MCP and a multi-agent capstone; syllabus follows Ed Donner's [agents](https://github.com/ed-donner/agents) |
 | [Harness Engineering](https://nwfreshness.github.io/ai-courses/harness-engineering/) | Building production-grade agent harnesses |
 
-Every course works on phones, saves progress in the browser, and has no external dependencies. The hub page shows progress across all of them.
+Every course works on phones, saves progress in the browser, has a hands-on simulator in every module, and has no external dependencies. The hub page shows progress across all of them.
 
 ## Layout
 
@@ -18,10 +18,12 @@ Every course works on phones, saves progress in the browser, and has no external
 build.py                    builds everything into site/
 engine/head.html            shared page shell: CSS, sidebar, top bar
 engine/tail.html            shared scripts: navigation, quizzes, progress, animation
+engine/sims.js              toolkit for the hands-on simulators (sliders, toggles, logs, charts)
 hub/index.html              the course list
 courses/<slug>/course.json  title, colors, storage key, hero type, hub card
 courses/<slug>/course.css   optional course-specific styles
 courses/<slug>/m00.html …   the course's sections, in file-name order
+courses/<slug>/sims.js      optional: the course's simulators
 ```
 
 ## Working on it
@@ -39,7 +41,8 @@ Use a local server rather than opening the files directly, so links between cour
 2. Edit `course.json`: `slug`, `title`, `subtitle`, a unique `storage` key (progress is stored under it), `hero` (`loom`, `tokens` or `trace`, or add a new hero function in `build.py`), and the hub card fields (`accent`, `blurb`, `time`, `motif`).
 3. Write sections as `m00.html` (start page), `m01.html`, … Each is a `<section class="module" id="…" data-title="…" data-wire="…" data-group="…">`. Sections with ids `m0`, `m1`, … count as modules for progress.
 4. Code samples can be written plain inside `<code class="hl-py">`, `hl-sh` or `hl-yaml`; the build adds syntax coloring.
-5. Run `python3 build.py` and push. The workflow in `.github/workflows/pages.yml` rebuilds and deploys on every push to `main`.
+5. For a simulator, add `<div class="sim" data-sim="name" data-title="…" data-lede="…" style="--wire:var(--w3)"></div>` to a module and `Sim.register("name", function (body) { … })` to the course's `sims.js`.
+6. Run `python3 build.py` and push. The workflow in `.github/workflows/pages.yml` rebuilds and deploys on every push to `main`.
 
 ## GitHub Pages setup (one time)
 

@@ -215,6 +215,8 @@ plan of steps, then carry out each step in turn, marking each complete with note
 When every step is complete, reply with the solution."""</code></pre></figure>
 <p>Write the two schemas, register both functions in a <code>TOOLS</code> dictionary, and run the same loop with a puzzle or a small analysis task and a higher <code>max_turns</code>. You'll watch a plan appear, then each step tick off in the terminal. Nothing about the loop changed; the tools gave the model a way to structure its own work.</p>
 
+<div class="sim" data-sim="loop-stepper" style="--wire:var(--w2)" data-title="Step through an agent loop" data-lede="A mock model plans a day trip with checklist tools. Step one turn at a time, change the turn limit, and break a tool."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <div class="note pitfall"><h4>Tool errors that kill the loop</h4>
 <p>If a tool raises and you don't catch it, the whole run dies, usually mid-conversation. Catch exceptions inside the dispatcher and return the error as the tool result. Models are good at reading "No step 7. The checklist has 5 steps." and correcting themselves.</p></div>
 

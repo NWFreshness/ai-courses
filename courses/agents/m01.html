@@ -117,6 +117,8 @@ async def main():
 asyncio.run(main())</code></pre></figure>
 <p>Run it with <code>uv run smoke_test.py</code>. Three calls should take about as long as one. If you only have an OpenRouter key, create the client with <code>AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY"))</code> and use a model name like <code>openai/gpt-5.4-mini</code>.</p>
 
+<div class="sim" data-sim="async-timeline" style="--wire:var(--w0)" data-title="Await one at a time, or gather" data-lede="Run the same model calls sequentially and concurrently, and compare the total time."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>What it costs, and how to keep it near zero</h2>
 <p>Agents multiply calls: one task can be ten or fifty model calls, and a loop with a bug can make hundreds. Use a small model while you build (every example here uses one), set a hard monthly limit on each provider's billing page, and watch the usage page after your first few runs so you know what a run costs. Hosted tools such as OpenAI's web search are billed per call on top of tokens; free-tier search APIs are cheaper for learning.</p>
 

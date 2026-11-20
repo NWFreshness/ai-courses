@@ -48,6 +48,8 @@
 <tr><td>Docs Q&amp;A bot</td><td>None (public docs only)</td><td>User questions</td><td>Reply to user</td><td>Already safe: no private data</td></tr>
 </tbody></table></div>
 
+<div class="sim" data-sim="trifecta" style="--wire:var(--w8)" data-title="The lethal trifecta" data-lede="An issue comment tries to steal secrets. Remove a leg, or add a control, and run it again."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Why approval prompts don't scale</h2>
 <p>The first instinct is to ask the human before every risky action. Anthropic's write-up on how they contain Claude reports what happened when Claude Code did that: users approved about 93% of permission prompts. At that rate, the prompt is a speed bump, not a decision. People stop reading them.</p>
 <p>Their replacement was an OS-level sandbox (Seatbelt on macOS, bubblewrap on Linux) that allows reads and writes inside the workspace and denies network access by default. Inside that boundary the agent runs largely uninterrupted. Permission prompts fell by 84%, and security improved, because the boundary holds whether or not anyone is paying attention.</p>

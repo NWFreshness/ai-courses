@@ -77,6 +77,8 @@ READ_ONLY_TOOLS = [t <span class="k">for</span> t <span class="k">in</span> TOOL
 <h3>Writing a good delegation brief</h3>
 <p>Anthropic found early versions of their lead agent wrote short, vague instructions like "research the semiconductor shortage", and subagents misread or duplicated each other. Their fix was to have the lead give each subagent an objective, an output format, guidance on tools and sources, and clear task boundaries. They also had the lead scale effort to the question: one agent with a handful of calls for a simple fact-finding query, several subagents with clear divisions of labor for a complex one.</p>
 
+<div class="sim" data-sim="subagents" style="--wire:var(--w7)" data-title="Subagents as context firewalls" data-lede="Split exploration across subagents and compare the lead&#x27;s context and the total bill."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Specialized roles that do work</h2>
 <p>Separate agents pay off most clearly when the second agent brings a different job, not just a different prompt.</p>
 <ul>

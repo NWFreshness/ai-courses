@@ -48,6 +48,8 @@
 <div class="note principle"><h4>Throughput changes the merge policy</h4>
 <p>With agents producing far more change than humans can review, OpenAI kept blocking gates minimal and pull requests short-lived. Flaky tests were usually re-run rather than allowed to block. Their reasoning: when throughput vastly exceeds human attention, correcting a mistake is cheap and waiting is expensive. They're explicit that this would be irresponsible in a low-throughput setting. The right gate strictness depends on how cheap your corrections are, so measure that before copying the policy.</p></div>
 
+<div class="sim" data-sim="entropy" style="--wire:var(--w9)" data-title="Agents copy what they see" data-lede="Simulate twelve weeks of agent changes in a codebase with a bad pattern in it."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>When the model changes</h2>
 <p>Harness components exist because of something a particular model does badly. When the model changes, some of those reasons disappear and new ones appear.</p>
 <ul>

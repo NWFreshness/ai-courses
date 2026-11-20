@@ -185,6 +185,8 @@ class StockPicker():
 <figcaption>A hierarchical crew trades predictability for a manager's judgment. The manager isn't listed among the crew's agents.</figcaption>
 </figure>
 
+<div class="sim" data-sim="crew-process" style="--wire:var(--w4)" data-title="Sequential or hierarchical" data-lede="Run the stock-picker crew both ways and compare model calls and rework across runs."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Agents that run their own code</h2>
 <p>A coding agent is only useful if it can run what it writes, and you shouldn't let it run that code on your machine. The pattern: tools that read and write files in one sandbox folder, plus a tool that runs a file inside a fresh Docker container with only that folder mounted.</p>
 <figure class="code"><figcaption>tools/sandbox_tools.py</figcaption><pre><code class="hl-py">import subprocess

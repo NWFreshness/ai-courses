@@ -122,6 +122,8 @@ tracer = trace.get_tracer(<span class="s">"harness"</span>, HARNESS_VERSION)
     <span class="k">return</span> rows</code></pre></figure>
 <p>Run each trial in a fresh sandbox so trials don't contaminate each other, and record the harness version with every result so you can compare versions.</p>
 
+<div class="sim" data-sim="passk" style="--wire:var(--w10)" data-title="pass@k versus pass^k" data-lede="One agent, one success rate, two very different numbers."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Where tasks come from</h2>
 <p>Anthropic's advice is to start early and small: a few dozen tasks drawn from real failures beat a large synthetic set built later. Define success before you start optimizing. Teams that wait until an agent is widely used, they note, end up building evals reactively while fixing production issues.</p>
 <p>Good sources: every bug report, every trace where a sensor fired, every task a human had to finish by hand, and the five tasks you wrote in Module 3.</p>

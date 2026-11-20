@@ -127,6 +127,8 @@ LAYERS = [<span class="s">"types"</span>, <span class="s">"config"</span>, <span
   <li><strong>Queryable telemetry.</strong> Each worktree got an ephemeral logs, metrics and traces stack that the agent queried with LogQL, PromQL and TraceQL, torn down when the task ended. That turns goals like "startup under 800 ms" into something the agent can test itself.</li>
 </ul>
 
+<div class="sim" data-sim="sensors" style="--wire:var(--w5)" data-title="Sensors in the loop" data-lede="Pick which checks run and how they report, then let the agent build and fix."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>When tests can't judge: a separate evaluator</h2>
 <p>Some qualities have no binary check: whether a design is good, whether a report is complete, whether a fix is the right fix. Here an inferential sensor earns its cost, but with one critical design rule from Anthropic's harness-design work: <strong>don't ask the generator to grade itself</strong>. Agents tend to praise their own output. Tuning a separate, skeptical evaluator turned out to be far more tractable than making a generator self-critical.</p>
 <p>To make the evaluator reliable:</p>

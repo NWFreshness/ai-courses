@@ -149,6 +149,8 @@ TOOLS = [
   <li><strong>Truncate from the right end.</strong> For command output, the tail holds the error. For file reads, page with an offset and tell the model how to get the rest.</li>
 </ul>
 
+<div class="sim" data-sim="stop-conditions" style="--wire:var(--w2)" data-title="How runs end" data-lede="Set the limits and run 40 tasks, some of which get stuck."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Own your control flow</h2>
 <p>Frameworks hide this loop behind <code>agent.run()</code>. That's fine until you need to pause for human approval, resume after a crash, inject a check before the agent exits, or replay a failing run. HumanLayer's 12-Factor Agents turns this into principles: own your prompts, own your context window, own your control flow, and make your agent a <em>stateless reducer</em>. That last one means the next action is a pure function of the event history:</p>
 <figure class="code"><figcaption>The reducer view: state is the event log</figcaption>

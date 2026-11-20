@@ -80,6 +80,8 @@ base = AutoModelForCausalLM.from_pretrained(<span class="s">"meta-llama/Llama-3.
 <span class="c"># logs the training loss, and pushes adapter checkpoints to the Hugging Face Hub.</span></code></pre></figure>
 <p>Treat these numbers as a starting point for your own runs and adjust from what the loss and evaluation tell you.</p>
 
+<div class="sim" data-sim="lora-calc" style="--wire:var(--w7)" data-title="How small is a LoRA adapter?" data-lede="Pick a base model, a rank and target modules, and count what actually trains."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Teach the format, not just the facts</h2>
 <p>Each training example is a prompt that ends exactly where the answer begins, followed by the price. That trains the model to produce a number in the expected place, which makes its output easy to parse. Evaluate the base model before training and you'll see how poorly it does; the first leaderboard entry for this week confirms it: the 4-bit base model is worse than guessing the average.</p>
 <div class="note principle"><h4>Base model, not instruct</h4>

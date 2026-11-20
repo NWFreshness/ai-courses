@@ -74,6 +74,8 @@ async def run_suite(run_agent, repeats: int = 3) -> dict:
     return results</code></pre></figure>
 <p>Prefer checks code can score: a tool was or wasn't called, a file exists, a test passes, a number is in range. Use a model judge with a written rubric only for qualities code can't check, and review a sample of its rulings yourself. Run each case several times and track the pass rate, because one pass proves little about a system that varies. Keep the suite in version control and run it whenever you change a prompt, a tool, a model or a framework version.</p>
 
+<div class="sim" data-sim="eval-repeats" style="--wire:var(--w9)" data-title="One run proves little" data-lede="Run an evaluation suite with one run per case, then several, and compare with the true pass rates."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <div class="note principle"><h4>Every failure becomes a test</h4>
 <p>When an agent does something wrong in use, add that input to the suite before you fix it. Over time the suite becomes a record of everything that has ever gone wrong, and a guarantee that it won't go wrong the same way twice.</p></div>
 

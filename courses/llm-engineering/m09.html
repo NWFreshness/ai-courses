@@ -87,6 +87,8 @@ image = modal.Image.debian_slim().pip_install(<span class="s">"torch"</span>, <s
 </figure>
 <p>The final step is small (from $30.19 to $29.90), which is typical of ensembles: they mostly smooth out each model's worst misses. The bigger lesson is the jump from Week 6's zero-shot frontier model to the RAG version. <mark>Showing a model similar, labeled examples at inference time is a powerful alternative to training it.</mark></p>
 
+<div class="sim" data-sim="ensemble" style="--wire:var(--w8)" data-title="Tune the ensemble" data-lede="Weight three pricers and see when the blend beats each one alone."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
 <h2>Scanning and messaging</h2>
 <p>The <strong>scanner agent</strong> reads deal RSS feeds, then asks a model to pick the most promising deals and rewrite each into a clean description with a clear price. Instead of asking for JSON in the prompt, as in Week 1, it uses <strong>structured outputs</strong>: you pass a Pydantic model as <code>response_format</code>, and the API guarantees the reply matches that schema.</p>
 <figure class="code"><figcaption>Structured outputs</figcaption>
