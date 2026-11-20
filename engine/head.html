@@ -388,6 +388,22 @@ pre.wrap{white-space:pre-wrap;word-break:break-word}
 @media (max-width:640px){.sim-body{padding:.85rem .8rem 1rem}.sim-head{padding:.8rem .8rem .55rem}.sim-grid2{grid-template-columns:1fr}
   .sim-bar{grid-template-columns:minmax(5rem,34%) 1fr 4.4rem}
   .sim-stats{grid-template-columns:repeat(auto-fit,minmax(6.4rem,1fr));gap:.45rem}.sim-stat{padding:.35rem .5rem}.sim-stat b{font-size:1.05rem}.sim-stat span{font-size:.74rem}}
+/* ---------- "Build it with an agent" kits ---------- */
+.agent-kit{border:1.5px dashed var(--wire,var(--ink));border-radius:8px;padding:.9rem 1.2rem .5rem;margin:2.2rem 0;background:color-mix(in srgb,var(--wire,var(--ink)) 4%,var(--surface))}
+.agent-kit h2{margin:.1rem 0 .3rem}
+.agent-kit h3{font-size:1rem;margin:1rem 0 .3rem}
+.kit-what{margin:0 0 .5rem;font-weight:600}
+.kit-steps{margin:.2rem 0 .8rem;font-size:.97rem}
+.kit-code pre{max-height:26rem;overflow:auto;white-space:pre-wrap!important;word-break:break-word}
+.kit-code .code-tools button:first-child{display:none}
+.kit-more{margin:.4rem 0}
+.kit-more summary{cursor:pointer;font-family:var(--display);font-weight:600;padding:.4rem 0;min-height:40px;display:flex;align-items:center}
+.kit-more summary::-webkit-details-marker{display:none}.kit-more summary{list-style:none}
+.kit-more summary::before{content:"";width:0;height:0;border-left:7px solid var(--wire,var(--ink));border-top:5px solid transparent;border-bottom:5px solid transparent;margin-right:.6rem;transition:transform .2s}
+.kit-more[open] summary::before{transform:rotate(90deg)}
+.kit-check .check{margin-top:.2rem}
+.kit-setup{border-style:solid}
+@media (max-width:640px){.agent-kit{padding:.8rem .8rem .4rem;margin-left:-.2rem;margin-right:-.2rem}}
 {{COURSE_CSS}}
 </style>
 <script>window.COURSE={{COURSE_JSON}};</script>

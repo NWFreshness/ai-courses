@@ -11,7 +11,7 @@ Self-contained courses on AI engineering, published with GitHub Pages.
 | [Harness Engineering](https://nwfreshness.github.io/ai-courses/harness-engineering/) | Building production-grade agent harnesses |
 | [AI Forward Deployed Engineer](https://nwfreshness.github.io/ai-courses/ai-fde/) | 3 weeks, one client project: a claims agent that's evaluated, durable, secured, deployed to AWS and handed over; syllabus follows Ed Donner's [undercover](https://github.com/ed-donner/undercover) |
 
-Every course works on phones, saves progress in the browser, has a hands-on simulator in every module, and has no external dependencies. The hub page shows progress across all of them.
+Every course works on phones, saves progress in the browser, has a hands-on simulator and a "Build it with an agent" kit in every module, and has no external dependencies. The hub page shows progress across all of them.
 
 ## Layout
 
@@ -25,6 +25,7 @@ courses/<slug>/course.json  title, colors, storage key, hero type, hub card
 courses/<slug>/course.css   optional course-specific styles
 courses/<slug>/m00.html …   the course's sections, in file-name order
 courses/<slug>/sims.js      optional: the course's simulators
+courses/<slug>/agent-kits.md optional: per-module briefs, review prompts and checklists for coding agents
 ```
 
 ## Working on it
@@ -43,7 +44,8 @@ Use a local server rather than opening the files directly, so links between cour
 3. Write sections as `m00.html` (start page), `m01.html`, … Each is a `<section class="module" id="…" data-title="…" data-wire="…" data-group="…">`. Sections with ids `m0`, `m1`, … count as modules for progress.
 4. Code samples can be written plain inside `<code class="hl-py">`, `hl-sh` or `hl-yaml`; the build adds syntax coloring.
 5. For a simulator, add `<div class="sim" data-sim="name" data-title="…" data-lede="…" style="--wire:var(--w3)"></div>` to a module and `Sim.register("name", function (body) { … })` to the course's `sims.js`.
-6. Run `python3 build.py` and push. The workflow in `.github/workflows/pages.yml` rebuilds and deploys on every push to `main`.
+6. For agent kits, add an `agent-kits.md` with a `=== setup | …` section (intro, then `--- brief` holding the starter AGENTS.md) and one `=== m3 | What you build` section per module with `--- brief`, `--- review` and `--- check` (one `- item` per line). The build puts each kit before the module's takeaways.
+7. Run `python3 build.py` and push. The workflow in `.github/workflows/pages.yml` rebuilds and deploys on every push to `main`.
 
 ## GitHub Pages setup (one time)
 

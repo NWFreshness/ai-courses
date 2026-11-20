@@ -207,6 +207,78 @@ def highlight(page):
     return re.sub(r'<code class="hl-(py|sh|yaml)">(.*?)</code>', one, page, flags=re.S)
 
 
+# ---------------------------------------------------------------- "Build it with an agent" kits
+# courses/<slug>/agent-kits.md holds, for each module, a brief to give a coding agent, a review prompt
+# for a fresh session, and a checklist for the learner. Format:
+#   === setup | Title            (the starter AGENTS.md, shown on the start page)
+#   === m3 | What you're building
+#   --- brief / --- review / --- check   (check: one "- item" per line)
+def parse_kits(path):
+    kits, cur, part = {}, None, None
+    for line in path.read_text().splitlines():
+        if line.startswith("=== "):
+            key, _, title = line[4:].partition("|")
+            cur = kits.setdefault(key.strip(), {"title": title.strip(), "brief": [], "review": [], "check": [], "intro": []})
+            part = "intro"
+        elif line.startswith("--- ") and cur is not None:
+            part = line[4:].strip()
+        elif cur is not None:
+            cur[part].append(line)
+    for k in kits.values():
+        for p in ("brief", "review", "intro"):
+            k[p] = "\n".join(k[p]).strip("\n")
+        k["check"] = [l[2:].strip() for l in k["check"] if l.startswith("- ")]
+    return kits
+
+
+def code_block(caption, text):
+    return (f'<figure class="code kit-code"><figcaption>{caption}</figcaption>'
+            f'<pre class="wrap"><code>{htmlmod.escape(text, quote=False)}</code></pre></figure>')
+
+
+def render_kit(slug, mid, kit, wire):
+    checks = "".join(f'<li><label><input type="checkbox" data-key="kit:{slug}:{mid}:{i}"> {htmlmod.escape(c, quote=False)}</label></li>'
+                     for i, c in enumerate(kit["check"]))
+    return (f'<section class="agent-kit" style="--wire:{wire}"><h2>Build it with an agent</h2>'
+            f'<p class="kit-what">{htmlmod.escape(kit["title"], quote=False)}</p>'
+            f'<ol class="kit-steps"><li>Save the brief in your repo as <code>docs/briefs/{mid}.md</code>.</li>'
+            f'<li>In a fresh session, ask your agent: <em>"Read docs/briefs/{mid}.md and plan it."</em> Read the plan and correct it.</li>'
+            f'<li>Tell it to build the plan. Then review the result in another fresh session, and check the list below yourself.</li></ol>'
+            + code_block(f"docs/briefs/{mid}.md: the brief", kit["brief"])
+            + '<details class="kit-more"><summary>Review prompt, for a fresh session afterwards</summary>'
+            + code_block("Review prompt", kit["review"]) + '</details>'
+            + f'<div class="kit-check"><h3>Check it yourself before you trust it</h3><ul class="check">{checks}</ul></div></section>')
+
+
+def render_setup(slug, kit):
+    return ('<section class="agent-kit kit-setup"><h2>Building with a coding agent</h2>'
+            + "".join(f"<p>{p}</p>" for p in kit["intro"].split("\n\n") if p.strip())
+            + code_block("AGENTS.md: put this at the root of your repo", kit["brief"]) + '</section>')
+
+
+def insert_kits(body, slug, folder):
+    path = folder / "agent-kits.md"
+    if not path.exists():
+        return body
+    kits = parse_kits(path)
+    for mid, kit in kits.items():
+        if mid == "setup":
+            m = re.search(r'<section class="module" id="start"', body)
+            foot = body.find('<div class="mod-foot">', m.start())
+            body = body[:foot] + render_setup(slug, kit) + "\n" + body[foot:]
+            continue
+        m = re.search(rf'<section class="module" id="{mid}" data-title="[^"]+" data-wire="([^"]+)"', body)
+        assert m, f"{slug}: no module {mid} for its agent kit"
+        nxt = body.find('<section class="module"', m.end())
+        end = nxt if nxt > 0 else len(body)
+        at = body.find('<div class="takeaways">', m.end(), end)
+        if at < 0:                                   # no takeaways (a capstone): put it before the module's footer
+            at = body.rfind('<div class="mod-foot">', m.end(), end)
+        assert at > 0, f"{slug} {mid}: nowhere to put the kit"
+        body = body[:at] + render_kit(slug, mid, kit, m.group(1)) + "\n\n" + body[at:]
+    return body
+
+
 # ---------------------------------------------------------------- page assembly
 attr_re = re.compile(r'\s(fill|stroke|stop-color)="((?:var|color-mix)\([^"]*\))"')
 
@@ -227,6 +299,7 @@ def fix_tag(m):
 def build_course(folder):
     cfg = json.loads((folder / "course.json").read_text())
     body = "".join((folder / f).read_text() for f in sorted(p.name for p in folder.glob("m*.html")))
+    body = insert_kits(body, cfg["slug"], folder)
     head = (ENGINE / "head.html").read_text()
     css = (folder / "course.css").read_text() if (folder / "course.css").exists() else ""
     public = {k: cfg[k] for k in ("slug", "title", "storage")}
