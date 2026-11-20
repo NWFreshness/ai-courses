@@ -1,0 +1,119 @@
+
+<section class="module" id="m8" data-title="Agent swarms" data-wire="var(--w8)" data-group="Week 2: Become an AI Architect">
+<div class="wire-band" style="--wire:var(--w8)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 2 · Day 4 · Module 8 of 14</p>
+  <h1>Agent swarms</h1>
+  <p class="lede">One agent working claims one at a time is fine for a pilot. On a Monday morning with 400 claims in the queue, Wayfarer needs many at once. Today you replace the queue agent with a dispatcher that fans claims out to parallel claim agents, and meet the limits that decide how fast a swarm can really go: rate limits, connection pools and retries that must never repeat a payment.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w8)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Tell teams, swarms and fleets apart, and know when parallel agents help.</li>
+    <li>Build a dispatcher in LangGraph that fans out work with <code>Send</code> and caps concurrency.</li>
+    <li>Handle rate limits with retry policies, and size concurrency to the slowest shared resource.</li>
+    <li>Measure time, cost and accuracy per claim across a run, and compare runs on a scoreboard.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w8)">
+  <h2>Build: a dispatcher and a scoreboard</h2>
+  <ol>
+    <li>Build the dispatcher first with a one-second stand-in for the claim agent, and time it at caps of 1, 5 and 25.</li>
+    <li>Simulate a 429 from the model provider and add a <code>RetryPolicy</code> that retries it with backoff.</li>
+    <li>Swap in the real claim agent and run the harder claims as a swarm of 5 and of 25, traced and scored.</li>
+    <li>In the product, start a dispatch from the dashboard with N agents (default 3), record each claim's cost and active time, and add a Scoreboard page for evaluation runs.</li>
+  </ol>
+  <p class="cost">Cost: the same per claim as before; a swarm only changes how long you wait. Free models are limited to about 20 requests a minute, so keep N small on them.</p>
+</div>
+
+<h2>Teams, swarms and fleets</h2>
+<div class="tbl"><table>
+<thead><tr><th>Term</th><th>Meaning</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td>Team</td><td>A few agents collaborating on one task</td><td>A coding agent's planner, implementer and reviewer</td></tr>
+<tr><td>Swarm</td><td>Many agents working in parallel on independent pieces</td><td>25 claim agents, one claim each</td></tr>
+<tr><td>Fleet</td><td>Every agent a business runs, managed together</td><td>Wayfarer's claim agent, copilot and improver</td></tr>
+</tbody></table></div>
+<p>Claims are independent, so a swarm is the right shape: no agent needs to talk to another, and the coordinator doesn't need to be a model at all. A dispatcher in plain code is cheaper, faster and more predictable than an LLM deciding who works next.</p>
+
+<h2>A dispatcher in LangGraph</h2>
+<figure class="code"><figcaption>dispatcher.py</figcaption><pre><code class="hl-py">import operator, time
+from typing import Annotated, TypedDict
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send, RetryPolicy
+
+class Dispatch(TypedDict):
+    claims: list[str]
+    results: Annotated[list, operator.add]       # each worker appends its result
+
+def list_claims(state: Dispatch) -> dict:
+    return {"claims": api.waiting_claims()}
+
+def fan_out(state: Dispatch) -> list[Send]:
+    return [Send("work_claim", claim_id) for claim_id in state["claims"]]
+
+def work_claim(claim_id: str) -> dict:
+    started = time.time()
+    outcome = run_claim_graph(claim_id)        # the durable graph from Module 7, on its own thread
+    return {"results": [{"claim_id": claim_id, "outcome": outcome, "seconds": time.time() - started}]}
+
+builder = StateGraph(Dispatch)
+builder.add_node("list_claims", list_claims)
+builder.add_node("work_claim", work_claim,
+                 retry_policy=RetryPolicy(max_attempts=4, initial_interval=2.0, backoff_factor=2.0))
+builder.add_edge(START, "list_claims")
+builder.add_conditional_edges("list_claims", fan_out, ["work_claim"])
+builder.add_edge("work_claim", END)
+dispatcher = builder.compile()
+
+result = dispatcher.invoke({}, {"max_concurrency": 5})      # at most five claim agents at once</code></pre></figure>
+<p><code>Send</code> starts one <code>work_claim</code> per claim, each with its own input. The <code>operator.add</code> reducer collects every worker's result into one list. <code>max_concurrency</code> caps how many run at the same time; the rest wait their turn.</p>
+
+<h2>What really limits a swarm</h2>
+<ul>
+  <li><strong>Rate limits.</strong> Providers return HTTP 429 when you send too many requests a minute. A retry policy with exponential backoff absorbs short bursts; a cap below the limit avoids them.</li>
+  <li><strong>Shared resources.</strong> Every claim agent opens database connections for its records and checkpoints. A small hosted Postgres allows only a handful of pooled connections (Supabase's small tiers allow about 15), and agents queue for them. Twenty-five agents can be barely faster than ten.</li>
+  <li><strong>The slowest claim.</strong> With enough agents, a run takes about as long as its slowest claim, not the sum.</li>
+  <li><strong>Retries and money.</strong> A retried worker re-runs its claim. That's safe only because each claim keeps its own durable thread and the payment step is idempotent.</li>
+</ul>
+<div class="sim" data-sim="swarm" style="--wire:var(--w8)" data-title="How many agents?" data-lede="Dispatch 25 claims with your choice of concurrency, rate limit, connection pool and retries."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<h2>Measure every claim</h2>
+<p>Record each claim's model cost (from token usage) and active time (excluding time waiting for a person). Then an evaluation is just a dispatch over a copy of the evaluation or held-out claims, and a Scoreboard page can compare runs: accuracy, cost of mistakes, cost per claim, seconds per claim and the straight-through rate. That table is what the improver in Module 9 reads.</p>
+
+<div class="note field"><h4>A claim waiting for sign-off doesn't block the swarm</h4>
+<p>Because each claim has its own thread, one paused for Rosa's sign-off simply stops; its worker finishes and the slot goes to the next claim. When she signs off, that claim resumes on its own, days later if need be.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Independent work suits a swarm with a coordinator in code, not a model.</li>
+  <li><code>Send</code> fans out, a reducer collects, <code>max_concurrency</code> caps.</li>
+  <li>Rate limits, connection pools and the slowest item set the real speed; retry with backoff.</li>
+  <li>Durable threads and idempotent payments are what make parallel retries safe.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">Going from 10 to 25 agents barely speeds up the run. What's the most likely cause?</p>
+<ol><li><button>The model got slower</button></li><li><button>A shared resource, such as the database connection pool or the rate limit, is the bottleneck</button></li><li><button>LangGraph ignores max_concurrency above 10</button></li><li><button>The reducer is slow</button></li></ol>
+<p class="q-why">Concurrency only helps until the next shared limit; find it and size N to it.</p></div>
+<div class="q" data-correct="2"><p class="q-prompt">Why is the dispatcher plain code rather than an LLM agent?</p>
+<ol><li><button>LangGraph can't run models in dispatchers</button></li><li><button>Models can't count</button></li><li><button>The claims are independent, so there's no judgment to make about who works next; code is cheaper and predictable</button></li><li><button>To save memory</button></li></ol>
+<p class="q-why">Use a model where judgment is needed, and code for the rest.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">What makes it safe for <code>RetryPolicy</code> to re-run a claim agent that failed halfway?</p>
+<ol><li><button>Each claim's durable thread resumes its progress, and payment is idempotent</button></li><li><button>Retries never re-run nodes</button></li><li><button>The 429 error means nothing happened</button></li><li><button>max_concurrency prevents duplicates</button></li></ol>
+<p class="q-why">Retries are only safe when repeating work can't repeat side effects.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w8)"><h2>Exercise: score the run</h2>
+<p>Add a <code>score_run</code> node that runs after all the workers, computing accuracy, cost of mistakes, cost per claim and wall-clock time, and writes a row to the scoreboard. Then give the dispatcher a checkpointer, stop the program partway through a dispatch, and make it finish the remaining claims when restarted.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.langchain.com/oss/python/langgraph/graph-api#send">Send and map-reduce</a> — LangGraph</li>
+  <li><a href="https://docs.langchain.com/oss/python/langgraph/graph-api#add-retry-policies">Retry policies</a> — LangGraph</li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 2 Day 4 reference</a> — ed-donner/undercover (<code>week2day4</code>, branch <code>week2day4-end</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

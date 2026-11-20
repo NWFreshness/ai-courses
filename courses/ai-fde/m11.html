@@ -1,0 +1,101 @@
+
+<section class="module" id="m10" data-title="The solutions architect" data-wire="var(--w10)" data-group="Week 3: Become an AI FDE">
+<div class="wire-band" style="--wire:var(--w10)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 3 · Day 1 · Module 10 of 14</p>
+  <h1>The solutions architect</h1>
+  <p class="lede">Week 3 is about the part of the job that isn't code: running an engagement with a client from discovery to handover, deciding how much autonomy each action gets, answering the risk team's questions, and setting up the cloud account the system will live in. Today has no new agent, and it may be the module that matters most in a real engagement.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w10)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Run an agent project through five phases, with governance, evals and change management throughout.</li>
+    <li>Sort candidate use cases in discovery and write a discovery note with a baseline and a target.</li>
+    <li>Decide autonomy per action as a risk decision, and choose where an agent runs.</li>
+    <li>Answer responsible-AI, privacy and accountability questions, and set up a safe cloud account.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w10)">
+  <h2>Build: a discovery note and an AWS account</h2>
+  <ol>
+    <li>Write a one-page discovery note for Wayfarer, or for a problem at your own work: the problem, who has it, the baseline today, the target, how you'll measure it, and the risks.</li>
+    <li>Fill in an autonomy decision for each action the claim agent can take.</li>
+    <li>Open an AWS account with a root user, put MFA on root, and choose us-east-1 for the course.</li>
+    <li>Create a monthly budget of $10 with alerts (excluding credits and refunds), an IAM user with only the permissions the course needs, and its access key; run <code>aws configure</code> and check from Python.</li>
+  </ol>
+  <p class="cost">Cost: nothing today. AWS has no hard spending cap, so the budget alerts matter. The free route uses Render instead.</p>
+</div>
+
+<h2>The agent development lifecycle</h2>
+<div class="tbl"><table>
+<thead><tr><th>Phase</th><th>What happens</th><th>The FDE's part</th></tr></thead>
+<tbody>
+<tr><td>Discovery</td><td>Find the problem worth solving and how to measure it</td><td>Interviews, process mapping, the baseline and the target</td></tr>
+<tr><td>R&amp;D</td><td>Prove it can work on real data</td><td>Notebooks, evals, model choice (Weeks 1 and 2)</td></tr>
+<tr><td>Development</td><td>Build the real thing</td><td>Architecture, harness, durability, security</td></tr>
+<tr><td>Implementation</td><td>Put it into use</td><td>Deployment, training, handover, adoption</td></tr>
+<tr><td>Maintenance</td><td>Keep it working and improving</td><td>Monitoring, evals on new data, the improvement loop</td></tr>
+</tbody></table></div>
+<p>Through every phase run four threads: clear <strong>ownership</strong>, <strong>governance</strong> (tollgates where the client decides whether to continue), <strong>evaluations</strong>, and <strong>change management</strong> for the people whose work changes.</p>
+
+<h2>Discovery</h2>
+<p>Sort candidate use cases into three kinds. <strong>Automation</strong> does an existing task with less human effort (deciding routine claims). <strong>Acceleration</strong> helps people do their work faster (a copilot for handlers). <strong>Differentiation</strong> does something new that sets the business apart (instant decisions at the airport gate). For each, ask: is the value measurable and worth it; is the data there and good enough; and what happens when the agent is wrong? A discovery note answers those questions on one page, with a baseline (how it works and performs today) and a target agreed with the client.</p>
+
+<h2>Architecture and where agents run</h2>
+<p>A typical enterprise shape: the agent reaches business systems through <strong>gateways</strong> (which hold security rules), <strong>integrations</strong> with systems of record, and a <strong>context layer</strong> of business knowledge (Module 12). Start with the simplest version that meets the need, and expect to redesign within a year as tools and models change. An agent can run on your own infrastructure (containers, functions), on a <strong>managed agent runtime</strong> such as Amazon Bedrock AgentCore, or inside a model lab's own hosted agent product. The choice trades control against effort.</p>
+
+<h2>Autonomy is a risk decision, per action</h2>
+<p>"How autonomous is the agent?" is the wrong question. Ask it per action: reading a claim is harmless, approving a $40 taxi is low risk, paying $4,000 isn't, and changing a customer's policy is out of scope. Each action gets a level, from fully automatic, through a person approving, to people only. Treat agents like any other software asset: inventoried, owned, versioned, reviewed and retired properly.</p>
+<div class="sim" data-sim="autonomy" style="--wire:var(--w10)" data-title="Set the autonomy, per action" data-lede="Choose how much autonomy each of the claim agent's actions gets, and see the effect on straight-through work, handler load and risk."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<h2>Responsible AI, privacy and handover</h2>
+<p>Expect a risk and compliance review. Organize your answers around common responsible-AI pillars: fairness, reliability and safety, privacy and security, inclusiveness, transparency and accountability. On <strong>privacy</strong>, know exactly where data goes: which model provider, under which terms, whether prompts are retained or used for training (paying doesn't by itself guarantee they aren't; check the product's terms and settings), and in which region. On <strong>accountability</strong>, name who owns each decision the system makes. Plan for <strong>handover</strong> from the start: the client must be able to run, monitor, change and switch off the system without you. And plan for <strong>adoption</strong>: a system the handlers don't trust won't be used, however accurate.</p>
+
+<h2>A cloud account that can't surprise you</h2>
+<figure class="code"><figcaption>check_aws.py: confirm who you are and that a budget exists</figcaption><pre><code class="hl-py">import boto3
+
+session = boto3.Session(region_name="us-east-1")
+me = session.client("sts").get_caller_identity()
+print("Account", me["Account"], "as", me["Arn"])           # should be your IAM user, not root
+
+budgets = session.client("budgets").describe_budgets(AccountId=me["Account"]).get("Budgets", [])
+for b in budgets:
+    print(b["BudgetName"], b["BudgetLimit"]["Amount"], b["BudgetLimit"]["Unit"])
+assert budgets, "Create a budget with alerts before deploying anything"</code></pre></figure>
+<div class="note pitfall"><h4>Account setup traps</h4>
+<p>Use the sign-up path that creates a full account with a root user, so you can choose the region and create IAM users; some newer simplified sign-ups restrict regions and IAM. Put MFA on root and never use it day to day. Exclude credits and refunds from the budget, or it will show zero spend and never alert. Use one region for everything, and check the region selector first when something seems to be missing in the console.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Five phases, with ownership, governance, evals and change management throughout.</li>
+  <li>Discovery sorts use cases and ends in a one-page note with a baseline and a target.</li>
+  <li>Decide autonomy per action by risk; treat agents as software assets.</li>
+  <li>Prepare privacy, accountability, handover and adoption answers early; set up cloud accounts with budgets and least privilege.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">A copilot that drafts replies for handlers to edit and send is which kind of use case?</p>
+<ol><li><button>Automation</button></li><li><button>Acceleration</button></li><li><button>Differentiation</button></li><li><button>Maintenance</button></li></ol>
+<p class="q-why">It speeds up people's work rather than replacing a task or creating a new offering.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">The client asks "how autonomous will it be?". What's the best answer?</p>
+<ol><li><button>Fully autonomous</button></li><li><button>Not autonomous at all</button></li><li><button>As autonomous as the model allows</button></li><li><button>It depends on the action: we'll agree a level for each, by its risk</button></li></ol>
+<p class="q-why">Autonomy is decided per action, from automatic to people only.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why exclude credits from the AWS budget?</p>
+<ol><li><button>Credits offset charges, so a budget that counts them shows zero and never alerts</button></li><li><button>AWS charges extra for budgets with credits</button></li><li><button>Credits expire</button></li><li><button>It's required for IAM users</button></li></ol>
+<p class="q-why">You want to see what you're using, not the net bill after credits.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w10)"><h2>Exercise: a decision record</h2>
+<p>Write the one-page discovery note for a problem at your own work, then an architecture decision record for one choice in it (for example, managed runtime or your own containers): the context, the options, the decision, and what would make you revisit it.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-managing-costs.html">Managing costs with AWS Budgets</a></li>
+  <li><a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html">IAM security best practices</a></li>
+  <li><a href="https://www.microsoft.com/en-us/ai/principles-and-approach">Responsible AI principles</a> — Microsoft (one common set of pillars)</li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 3 Day 1 reference</a> — ed-donner/undercover (<code>week3day1</code>; <code>week3day1free</code> for Render)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

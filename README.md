@@ -9,6 +9,7 @@ Self-contained courses on AI engineering, published with GitHub Pages.
 | [LLM Engineering](https://nwfreshness.github.io/ai-courses/llm-engineering/) | 8 weeks of LLM products, from API calls to RAG, fine-tuning and agents; syllabus follows Ed Donner's [llm_engineering](https://github.com/ed-donner/llm_engineering) |
 | [Agentic AI](https://nwfreshness.github.io/ai-courses/agents/) | 6 weeks of agents: a loop by hand, five frameworks, MCP and a multi-agent capstone; syllabus follows Ed Donner's [agents](https://github.com/ed-donner/agents) |
 | [Harness Engineering](https://nwfreshness.github.io/ai-courses/harness-engineering/) | Building production-grade agent harnesses |
+| [AI Forward Deployed Engineer](https://nwfreshness.github.io/ai-courses/ai-fde/) | 3 weeks, one client project: a claims agent that's evaluated, durable, secured, deployed to AWS and handed over; syllabus follows Ed Donner's [undercover](https://github.com/ed-donner/undercover) |
 
 Every course works on phones, saves progress in the browser, has a hands-on simulator in every module, and has no external dependencies. The hub page shows progress across all of them.
 
@@ -38,7 +39,7 @@ Use a local server rather than opening the files directly, so links between cour
 ## Adding a course
 
 1. Copy an existing folder in `courses/` to `courses/<new-slug>/`.
-2. Edit `course.json`: `slug`, `title`, `subtitle`, a unique `storage` key (progress is stored under it), `hero` (`loom`, `tokens` or `trace`, or add a new hero function in `build.py`), and the hub card fields (`accent`, `blurb`, `time`, `motif`).
+2. Edit `course.json`: `slug`, `title`, `subtitle`, a unique `storage` key (progress is stored under it), `hero` (`loom`, `tokens`, `trace` or `queue`, or add a new hero function in `build.py`), and the hub card fields (`accent`, `blurb`, `time`, `motif`).
 3. Write sections as `m00.html` (start page), `m01.html`, … Each is a `<section class="module" id="…" data-title="…" data-wire="…" data-group="…">`. Sections with ids `m0`, `m1`, … count as modules for progress.
 4. Code samples can be written plain inside `<code class="hl-py">`, `hl-sh` or `hl-yaml`; the build adds syntax coloring.
 5. For a simulator, add `<div class="sim" data-sim="name" data-title="…" data-lede="…" style="--wire:var(--w3)"></div>` to a module and `Sim.register("name", function (body) { … })` to the course's `sims.js`.

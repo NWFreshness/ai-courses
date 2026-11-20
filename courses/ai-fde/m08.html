@@ -1,0 +1,135 @@
+
+<section class="module" id="m7" data-title="Durable state and human in the loop" data-wire="var(--w7)" data-group="Week 2: Become an AI Architect">
+<div class="wire-band" style="--wire:var(--w7)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 2 · Day 3 · Module 7 of 14</p>
+  <h1>Durable state and human in the loop</h1>
+  <p class="lede">A large payout may wait days for Rosa's sign-off, and in that time the agent's process will restart, deploy or crash. When she signs off, the claim must carry on exactly where it stopped, and be paid exactly once. Today the claim agent becomes a hand-written LangGraph graph with checkpoints in Postgres, a pause for a person, and a payment step designed so that nothing can make it pay twice.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w7)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Explain durable execution and how LangGraph checkpoints a graph on a thread.</li>
+    <li>Pause a graph for a person with <code>interrupt()</code> and resume it with <code>Command(resume=...)</code>, after a restart.</li>
+    <li>Design side effects such as payments so retries and resumes can't repeat them.</li>
+    <li>Design the human's step: when to ask, what to show and what to record.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w7)">
+  <h2>Build: a claim graph that survives anything</h2>
+  <ol>
+    <li>Create a free Supabase project and use its session pooler connection string as <code>DATABASE_URL</code>; move the claims records there.</li>
+    <li>Rebuild the claim agent as a graph: <code>agent</code>, <code>tools</code>, <code>decide</code>, <code>approval</code> and <code>pay</code>, with <code>PostgresSaver</code> and one thread per claim.</li>
+    <li>Pause a large claim for approval, restart the program, and resume it from the database.</li>
+    <li>Try to pay a claim twice, and show the second attempt does nothing.</li>
+    <li>Wire the dashboard's Sign off button to resume the graph, and bring in Module 5's payout tool and tracing.</li>
+  </ol>
+  <p class="cost">Cost: Supabase's free tier; cents in model calls.</p>
+</div>
+
+<h2>Durable execution in one idea</h2>
+<p>A durable run can stop partway, for any reason, and carry on later from where it was. LangGraph gets this from <strong>checkpoints</strong>: after every step (a "super-step", in which one or more nodes run) it saves the whole state under a <strong>thread ID</strong>. Give each claim its own thread, keep the checkpoints in Postgres, and any process anywhere can pick a claim up by its ID.</p>
+<p>The vocabulary: the <strong>state</strong> is a typed dictionary; <strong>nodes</strong> are functions that return updates to it; <strong>edges</strong> are fixed or conditional; <strong>reducers</strong> say how updates combine (such as appending messages).</p>
+
+<figure class="code"><figcaption>claim_graph.py</figcaption><pre><code class="hl-py">from typing import Annotated, TypedDict
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.types import interrupt, Command
+
+class ClaimState(TypedDict, total=False):
+    messages: Annotated[list, add_messages]
+    claim_id: str
+    decision: str
+    payout: float
+    rationale: str
+    approved_by: str
+
+def approval(state: ClaimState) -> dict:
+    """Wait for a handler to sign off a payout over the limit."""
+    answer = interrupt({"claim_id": state["claim_id"], "payout": state["payout"], "rationale": state["rationale"]})
+    return {"approved_by": answer["handler"]}
+
+def pay(state: ClaimState) -> dict:
+    """Pay the claim unless it's been paid already. The database enforces 'exactly once'."""
+    db.execute("INSERT INTO payments (claim_id, amount, approved_by) VALUES (%s, %s, %s) "
+               "ON CONFLICT (claim_id) DO NOTHING", (state["claim_id"], state["payout"], state.get("approved_by")))
+    return {}
+
+def after_decide(state: ClaimState) -> str:
+    if state["decision"] != "approve":
+        return END
+    return "approval" if state["payout"] > 1000 else "pay"
+
+builder = StateGraph(ClaimState)
+for name, fn in [("agent", agent_node), ("tools", ToolNode(tools)), ("decide", decide), ("approval", approval), ("pay", pay)]:
+    builder.add_node(name, fn)
+builder.add_edge(START, "agent")
+builder.add_conditional_edges("agent", after_agent, ["tools", "decide"])
+builder.add_edge("tools", "agent")
+builder.add_conditional_edges("decide", after_decide, ["approval", "pay", END])
+builder.add_edge("approval", "pay")
+builder.add_edge("pay", END)
+
+with PostgresSaver.from_conn_string(DATABASE_URL) as saver:
+    saver.setup()
+    graph = builder.compile(checkpointer=saver)
+    config = {"configurable": {"thread_id": "WF-1003"}}
+    graph.invoke({"messages": [claim_prompt("WF-1003")], "claim_id": "WF-1003"}, config, durability="sync")
+    # ...days later, in any process, when Rosa signs off:
+    graph.invoke(Command(resume={"handler": "Rosa Delgado"}), config, durability="sync")</code></pre></figure>
+<p><code>durability="sync"</code> writes each checkpoint before the next step starts, so a crash can't lose a step that already happened. It's slower than the default, and right for anything involving money.</p>
+
+<h2>Never pay twice</h2>
+<p>Two facts about resuming catch people out. After a crash, the node that was running <em>starts again from the top</em>. And when a graph resumes after <code>interrupt()</code>, the node that paused also <em>re-runs from its start</em>, with <code>interrupt()</code> now returning the human's answer. So any side effect placed before an <code>interrupt()</code>, or in a node that can crash halfway, can happen twice. The defenses:</p>
+<ul>
+  <li>Put each side effect in a node of its own, after the pause, never before it.</li>
+  <li>Make it <strong>idempotent</strong>: here the claim ID is the payments table's primary key, so a second insert does nothing.</li>
+  <li>Remember that rewinding to an earlier checkpoint rewinds the graph's state, not the world. Undoing a payment takes a business action, such as a refund.</li>
+</ul>
+<div class="sim" data-sim="never-pay-twice" style="--wire:var(--w7)" data-title="Crash it, resume it, count the payments" data-lede="Run a $1,450 claim through the graph, crash it at any step, and see whether the customer is paid once, twice or not at all."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<h2>Designing the human's step</h2>
+<ul>
+  <li><strong>When to ask.</strong> Only where a person adds something: above a money limit, on low confidence, on anything irreversible. Ask too often and people approve without reading (decision fatigue).</li>
+  <li><strong>What to show.</strong> The decision, the amount, the rationale with the policy section, and the evidence, on one screen, so the handler can check rather than redo the work.</li>
+  <li><strong>What to record.</strong> Who signed off, when, and anything they changed or noted, so the decision is auditable later.</li>
+</ul>
+
+<div class="note pitfall"><h4>Supabase on the free tier</h4>
+<p>Use the session pooler's connection string, and replace <code>[YOUR-PASSWORD]</code> including the brackets; a password of letters and numbers avoids escaping problems. A free project pauses after a week without use; restore it from Supabase's dashboard. Connection pools are small, which matters in Module 8.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Checkpoints per step on a thread per claim make runs durable across restarts and machines.</li>
+  <li><code>interrupt()</code> pauses for a person; <code>Command(resume=...)</code> carries on, from any process.</li>
+  <li>Nodes re-run after crashes and resumes, so side effects go in their own idempotent nodes.</li>
+  <li>Ask people only where they add value, show them everything on one screen, and record what they decided.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="3"><p class="q-prompt">A node calls <code>pay()</code> and then <code>interrupt()</code> to ask the handler for a note. The handler resumes it. What happens?</p>
+<ol><li><button>Nothing unusual</button></li><li><button>The graph skips the node</button></li><li><button>The note is lost</button></li><li><button>The node re-runs from its start on resume, so it pays again unless the payment is idempotent</button></li></ol>
+<p class="q-why">Code before <code>interrupt()</code> runs again when the node resumes. Side effects belong after the pause, in their own node.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">What makes the payment idempotent in the example?</p>
+<ol><li><button>The claim ID is the primary key, and the insert does nothing on conflict</button></li><li><button>The <code>durability="sync"</code> setting</button></li><li><button>The interrupt</button></li><li><button>The reducer</button></li></ol>
+<p class="q-why">Durability saves progress; idempotency makes repeating an action harmless. You need both.</p></div>
+<div class="q" data-correct="2"><p class="q-prompt">You rewind a claim's thread to a checkpoint before the payment. Is the money returned?</p>
+<ol><li><button>Yes, automatically</button></li><li><button>Yes, if durability is sync</button></li><li><button>No: the graph's state is rewound, but the payment happened in the world and needs a refund</button></li><li><button>Only in Supabase</button></li></ol>
+<p class="q-why">Time travel applies to the agent's state, not to side effects already made.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w7)"><h2>Exercise: send it back</h2>
+<p>Let the handler reject a payout with a note instead of signing off, and route the graph back to the agent with that note so it decides again. Then kill the agent process partway through a run of several claims and show every claim carries on correctly when you start it again.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.langchain.com/oss/python/langgraph/durable-execution">Durable execution</a> and <a href="https://docs.langchain.com/oss/python/langgraph/interrupts">interrupts</a> — LangGraph</li>
+  <li><a href="https://supabase.com/docs/guides/database/connecting-to-postgres">Connecting to Postgres</a> — Supabase</li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 2 Day 3 reference</a> — ed-donner/undercover (<code>week2day3</code>, branch <code>week2day3-end</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

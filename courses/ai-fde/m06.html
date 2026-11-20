@@ -1,0 +1,139 @@
+
+<section class="module" id="m5" data-title="Evals and observability" data-wire="var(--w5)" data-group="Week 2: Become an AI Architect">
+<div class="wire-band" style="--wire:var(--w5)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 2 · Day 1 · Module 5 of 14</p>
+  <h1>Evals and observability</h1>
+  <p class="lede">Week 2 is about becoming the architect: making choices you can defend to a client with numbers. That starts with measuring the right thing. A model's answer can be plausible and wrong, and an accuracy score can hide which mistakes cost the business money. Today you build Wayfarer's evaluation, trace the agent's work, and use both to make your first architecture decision: should the model do arithmetic?</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w5)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Avoid three common architecture traps, and say when a second agent is justified.</li>
+    <li>Choose between direct measurement, a model judge and human review.</li>
+    <li>Score decisions with a confusion matrix, precision, recall, Cohen's kappa and a cost of mistakes.</li>
+    <li>Trace runs and compare experiments in Langfuse, and move business logic into code.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w5)">
+  <h2>Build: an evaluation, and a payout tool</h2>
+  <ol>
+    <li>Write 25 harder claims: several items with per-item limits, a deductible, and payments already made by another insurer.</li>
+    <li>Create a free Langfuse Cloud project, trace one claim end to end, and load the claims with the handlers' answers as a dataset.</li>
+    <li>Run a baseline experiment where the model works out the payout itself, scored on accuracy and cost of mistakes.</li>
+    <li>Give the agent a <code>calculate_payout</code> tool written in Python, run the same experiment three times, and compare.</li>
+  </ol>
+  <p class="cost">Cost: cents per experiment on a small model. Langfuse Cloud's free tier needs no card.</p>
+</div>
+
+<h2>Three traps</h2>
+<ol>
+  <li><strong>The "agent for X".</strong> Start from a business problem you can measure, and see how far you get without agents.</li>
+  <li><strong>Human-shaped teams.</strong> A "researcher", a "writer" and a "reviewer" sound sensible but multiply cost and failure points. Start with one agent; add another when it measurably helps.</li>
+  <li><strong>Plausible, not accurate.</strong> Model output reads well whether or not it's right. Only measurement tells you.</li>
+</ol>
+<p>Good reasons to add an agent are specific: to <strong>isolate context</strong> (as <code>work_claim</code> does), for an <strong>independent check</strong>, to use a <strong>different model</strong> for a step, for <strong>parallel work</strong>, or to <strong>ring-fence permissions</strong>. And anything that's really business logic, a calculation, a rule, a limit, belongs in code, not in a prompt.</p>
+
+<h2>Three kinds of evals</h2>
+<div class="tbl"><table>
+<thead><tr><th>Kind</th><th>Use it for</th><th>Wayfarer example</th></tr></thead>
+<tbody>
+<tr><td>Direct measurement</td><td>Anything with a known right answer</td><td>Decision matches the handler's; payout within $1</td></tr>
+<tr><td>Model as judge</td><td>Qualities code can't check, against a rubric</td><td>Does the rationale give the handler's grounds? (Module 9)</td></tr>
+<tr><td>Human review</td><td>Calibrating judges, and anything high-stakes</td><td>Rosa reviews a sample each week</td></tr>
+</tbody></table></div>
+
+<h2>Scores that match the business</h2>
+<p>With three decisions there are nine combinations of the agent's answer and the handler's, a 3×3 <strong>confusion matrix</strong>. The diagonal is agreement. Off the diagonal, mistakes differ hugely in cost: a wrongful decline lets down a customer who was owed money, a wrongful approval pays money that wasn't owed, and a needless referral only costs a handler's time. <strong>Precision</strong> for "approve" asks how many of the agent's approvals were right; <strong>recall</strong> asks how many of the handlers' approvals the agent found.</p>
+<figure class="code"><figcaption>evals.py: accuracy, cost of mistakes and kappa</figcaption><pre><code class="hl-py">WRONGFUL_DECLINE, NEEDLESS_REFERRAL = 1500, 50          # agreed with the client, in dollars
+
+def is_right(answer, expected) -> bool:
+    return answer["decision"] == expected["decision"] and abs(answer["payout"] - expected["payout"]) <= 1
+
+def mistake_cost(answer, expected) -> float:
+    if answer["decision"] == expected["decision"]:
+        return abs(answer["payout"] - expected["payout"]) if answer["decision"] == "approve" else 0
+    return {"decline": WRONGFUL_DECLINE, "approve": answer["payout"], "refer": NEEDLESS_REFERRAL}[answer["decision"]]
+
+def kappa(agent: list[str], handler: list[str]) -> float:
+    """Agreement beyond what matching the handlers' proportions by chance would give."""
+    n = len(agent)
+    observed = sum(a == h for a, h in zip(agent, handler)) / n
+    expected = sum((agent.count(d) / n) * (handler.count(d) / n) for d in ("approve", "decline", "refer"))
+    return (observed - expected) / (1 - expected)</code></pre></figure>
+<p><strong>Cohen's kappa</strong> corrects agreement for chance. If most claims deserve approval, "approve everything" agrees with the handlers most of the time, but its kappa is zero: it shows no skill at all. The cost of mistakes turns the same results into the number the client cares about, dollars.</p>
+<div class="sim" data-sim="confusion-cost" style="--wire:var(--w5)" data-title="Same accuracy, different damage" data-lede="Pick a strategy and see its confusion matrix, accuracy, kappa and cost of mistakes. Then change what a wrongful decline costs."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<h2>Observability with Langfuse</h2>
+<p>A <strong>trace</strong> records one run: every model call, tool call and its timing and cost. A <strong>dataset</strong> holds inputs with expected outputs; an <strong>experiment</strong> runs a version of the agent over a dataset; <strong>scores</strong> attach results to each item, so experiments can be compared side by side.</p>
+<figure class="code"><figcaption>Tracing an agent, and running an experiment</figcaption><pre><code class="hl-py">from langfuse import Evaluation, get_client
+from langfuse.langchain import CallbackHandler
+
+langfuse = get_client()                                   # reads the three LANGFUSE_ keys from .env
+agent.invoke({"messages": [...]}, config={"callbacks": [CallbackHandler()]})   # one traced run
+
+def task(*, item, **kwargs):
+    return decide_claim(item.input)                      # returns {"decision", "payout", "rationale"}
+
+def accuracy(*, output, expected_output, **kwargs):
+    return Evaluation(name="accuracy", value=float(is_right(output, expected_output)))
+
+def cost_of_mistakes(*, output, expected_output, **kwargs):
+    return Evaluation(name="mistake_cost", value=mistake_cost(output, expected_output))
+
+dataset = langfuse.get_dataset("wayfarer-harder-claims")
+dataset.run_experiment(name="payout-tool", task=task, evaluators=[accuracy, cost_of_mistakes])</code></pre></figure>
+
+<h2>Business logic belongs in code</h2>
+<p>Ask a model to add up six items, apply a per-item limit, subtract a deductible and another insurer's payment, and it will often be close and sometimes wrong. Write the calculation once, in Python with tests, and give it to the agent as a tool. The agent's job becomes deciding <em>what</em> is covered; the code decides <em>how much</em>.</p>
+<figure class="code"><figcaption>payout.py</figcaption><pre><code class="hl-py">from pydantic import BaseModel
+
+class Line(BaseModel):
+    description: str
+    amount: float
+    covered: bool
+
+def calculate_payout(lines: list[Line], per_item_limit: float, benefit_limit: float,
+                     deductible: float, paid_by_other_insurer: float = 0) -> float:
+    """The payout for the covered lines of a claim, after limits, the deductible and other insurance."""
+    covered = sum(min(line.amount, per_item_limit) for line in lines if line.covered)
+    owed = min(covered, benefit_limit) - deductible - paid_by_other_insurer
+    return round(max(owed, 0), 2)</code></pre></figure>
+<p>Run each version at least three times: a run of 25 claims is noisy, and one good run proves little. When the reference course made this change on its own harder claims, wrong decisions or amounts fell by about three quarters across three runs.</p>
+
+<div class="note pitfall"><h4>Two different accuracies</h4>
+<p>The confusion matrix counts decisions only, so an approval with the wrong amount sits on the diagonal. Accuracy also checks the payout. Report both, and say which you mean.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Start from a measurable business problem and one agent; add agents for specific reasons.</li>
+  <li>Measure directly where you can, use judges for the rest, and calibrate with people.</li>
+  <li>A confusion matrix, kappa and a cost of mistakes say far more than one accuracy figure.</li>
+  <li>Trace runs, compare experiments over several runs, and put business logic in code.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">"Approve everything" gets 60% of decisions right. What is its Cohen's kappa?</p>
+<ol><li><button>0.6</button></li><li><button>0: its agreement is exactly what chance gives for those proportions</button></li><li><button>1</button></li><li><button>It can't be calculated</button></li></ol>
+<p class="q-why">Kappa measures agreement beyond chance; a constant answer has none.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">Which mistake usually costs Wayfarer most, in the cost model above?</p>
+<ol><li><button>A needless referral</button></li><li><button>A payout off by $5</button></li><li><button>Approving a claim the handler also approved</button></li><li><button>Declining a claim the handler would have paid</button></li></ol>
+<p class="q-why">Each wrongful decline is priced at $1,500 for the harm to the customer and the business.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why give the agent a <code>calculate_payout</code> tool instead of a better prompt about arithmetic?</p>
+<ol><li><button>The calculation is business logic with one right answer; code does it exactly every time and can be tested</button></li><li><button>Models can't add</button></li><li><button>Tools are cheaper than prompts</button></li><li><button>Langfuse requires it</button></li></ol>
+<p class="q-why">Let the model judge what's covered and let code compute the amount.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w5)"><h2>Exercise: change the price of a mistake</h2>
+<p>Raise the cost of a wrongful decline to $5,000 and lower it to $500, and recompute the cost of mistakes for each version of your agent. Does the better version change? Then try a shorter policy wording and see what it does to accuracy and cost.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://langfuse.com/docs">Langfuse documentation</a> (tracing, datasets, experiments, scores)</li>
+  <li><a href="https://en.wikipedia.org/wiki/Cohen%27s_kappa">Cohen's kappa</a></li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 2 Day 1 reference</a> — ed-donner/undercover (<code>week2day1</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

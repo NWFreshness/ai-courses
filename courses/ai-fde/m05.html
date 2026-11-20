@@ -1,0 +1,146 @@
+
+<section class="module" id="m4" data-title="Harness engineering" data-wire="var(--w4)" data-group="Week 1: Become an AI Engineer">
+<div class="wire-band" style="--wire:var(--w4)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 1 · Day 5 · Module 4 of 14</p>
+  <h1>Harness engineering</h1>
+  <p class="lede">The pilot's agent works, but it's naive: one long conversation for the whole queue, no access to the claims manual, nothing to say what happens when a claim fails. Agent = model + harness, and the harness is where an FDE's judgment shows. Today you compare two ready-made harnesses, then give Wayfarer's agent a proper one of its own.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w4)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Name the parts of a harness and decide what to build and what to buy.</li>
+    <li>Run the same job on the Claude Agent SDK and on Deep Agents, and compare them.</li>
+    <li>Give an agent a fresh context per unit of work, with a one-line report back.</li>
+    <li>Give it searchable documents, and clear rules for failures and hand-offs to people.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w4)">
+  <h2>Build: Wayfarer's harness</h2>
+  <ol>
+    <li>Make a "claims desk" folder of five claims and the wording, and have both ready-made harnesses work it with a claim-handler subagent that writes a decision file per claim and a handover note at the end.</li>
+    <li>In the product, split the agent in two: a queue agent that keeps a to-do list (shown on the dashboard) and a <code>work_claim</code> helper that decides each claim in a fresh context and reports back in one line.</li>
+    <li>Give the claim agent tools to search the policy wording and the claims manual and read one section at a time.</li>
+    <li>Add failure rules: a claim that fails goes back in the queue once, and a second failure leaves it for a handler.</li>
+  </ol>
+  <p class="cost">Cost: about 40 cents for the Claude Agent SDK run on a mid-size Claude model; a few cents for Deep Agents on a cheap open model.</p>
+</div>
+
+<h2>From prompts to harnesses</h2>
+<p>The craft has moved from <strong>prompt engineering</strong> (the right words) to <strong>context engineering</strong> (the right information at the right time) to <strong>harness engineering</strong>: all the software around the model that makes it dependable. Its parts:</p>
+<div class="tbl"><table>
+<thead><tr><th>Part</th><th>Question it answers</th><th>In Wayfarer</th></tr></thead>
+<tbody>
+<tr><td>Context</td><td>What does the model see, and when?</td><td>Searchable wording and manual, one claim per context</td></tr>
+<tr><td>Workflow</td><td>Which steps are fixed, which are the model's choice?</td><td>Code drives the queue; the model decides each claim</td></tr>
+<tr><td>State</td><td>What survives between steps and restarts?</td><td>Claim status in the database, the to-do list</td></tr>
+<tr><td>Subagents</td><td>What work gets its own context?</td><td>One claim agent per claim</td></tr>
+<tr><td>Permissions</td><td>What may it do without asking?</td><td>Pay up to $1,000; larger payouts wait for sign-off</td></tr>
+<tr><td>Observability</td><td>What did it do, and why?</td><td>Steps on the dashboard; traces from Module 5</td></tr>
+<tr><td>Self-improvement</td><td>How does it get better?</td><td>The improver in Module 9</td></tr>
+</tbody></table></div>
+<p>You use a harness every day, your coding agent. With Wayfarer you build one. Build or buy is a spectrum: direct API calls; LangChain's <code>create_agent</code>, a loop with middleware; Deep Agents, which adds planning, files and subagents; and the Claude Agent SDK, which gives you the harness behind Claude Code. The choice of framework matters less than what you do with it.</p>
+
+<h2>Two ready-made harnesses, one job</h2>
+<figure class="code"><figcaption>The Claude Agent SDK: Claude Code's harness, pointed at a folder</figcaption><pre><code class="hl-py">from claude_agent_sdk import AgentDefinition, ClaudeAgentOptions, query
+
+handler = AgentDefinition(
+    description="Decides one claim and writes its decision file. Give it the claim id.",
+    prompt=HANDLER_INSTRUCTIONS, tools=["Read", "Glob", "Grep", "Write"])
+
+options = ClaudeAgentOptions(
+    model="claude-sonnet-5-5", cwd="claims_desk",
+    system_prompt={"type": "preset", "preset": "claude_code", "append": DESK_INSTRUCTIONS},
+    allowed_tools=["Read", "Glob", "Grep", "Write", "Task"],
+    agents={"claim-handler": handler},
+    permission_mode="dontAsk", setting_sources=[], max_budget_usd=1.00)
+
+async for message in query(prompt="Work the claims in inbox/ and leave a handover note.", options=options):
+    print(message)</code></pre></figure>
+<figure class="code"><figcaption>Deep Agents: the same shape on any model</figcaption><pre><code class="hl-py">from deepagents import create_deep_agent
+from deepagents.backends import FilesystemBackend
+
+agent = create_deep_agent(
+    model=llm, system_prompt=DESK_INSTRUCTIONS,
+    subagents=[{"name": "claim-handler", "description": "Decides one claim and writes its decision file.",
+                "system_prompt": HANDLER_INSTRUCTIONS}],
+    backend=FilesystemBackend(root_dir="claims_desk", virtual_mode=True))
+agent.invoke({"messages": [{"role": "user", "content": "Work the claims in inbox/ and leave a handover note."}]},
+             {"recursion_limit": 200})</code></pre></figure>
+<p>Note what you didn't write: no tools for reading files or tracking work, no subagent plumbing. Both harnesses bring those. Note also the guardrails you did set: a working folder, the tools allowed, no permission prompts in an unattended run, and a spending cap.</p>
+
+<h2>Wayfarer's own harness</h2>
+<p>For the product you want more control than a general-purpose harness gives, so build it on <code>create_agent</code>. The key move is a <strong>fresh context per claim</strong>: the queue agent never sees a claim's details, only a one-line result, so its context stays small however long the queue, and one strange claim can't confuse the next.</p>
+<figure class="code"><figcaption>agent/queue.py (core)</figcaption><pre><code class="hl-py">from langchain.agents import create_agent
+from langchain.agents.middleware import TodoListMiddleware
+from langchain_core.tools import tool
+
+claim_agent = create_agent(model=llm, tools=[get_claim, get_policy, search_documents, read_section,
+                                             record_decision, pay_claim],
+                           system_prompt=CLAIM_GOAL)            # a goal and rules, not a script
+
+@tool
+def work_claim(claim_id: str) -> str:
+    """Decide one claim in a fresh context and report the outcome in one line."""
+    try:
+        result = claim_agent.invoke({"messages": [{"role": "user", "content": f"Decide claim {claim_id}."}]})
+        return api.get_claim(claim_id).one_line_summary()
+    except Exception as error:
+        failures = api.record_failure(claim_id, str(error))   # back in the queue once, then left for a handler
+        return f"{claim_id} failed ({error}); " + ("left for a handler" if failures >= 2 else "will retry")
+
+queue_agent = create_agent(model=llm, tools=[list_waiting_claims, work_claim],
+                           system_prompt="Work every waiting claim, one at a time, with work_claim. Keep your to-do list current.",
+                           middleware=[TodoListMiddleware()])</code></pre></figure>
+<div class="sim" data-sim="fresh-context" style="--wire:var(--w4)" data-title="One long conversation, or a fresh context per claim?" data-lede="Work a queue both ways and watch the queue agent's context and the error rate as the queue grows."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<h2>Documents the agent can search</h2>
+<p>The claims manual is long, and most claims need one or two sections of it. Rather than pasting it into every prompt, give the claim agent two tools: <code>search_documents(query)</code> returns matching section titles with a line of context, and <code>read_section(document, section)</code> returns one section. This is progressive disclosure for an agent: it pays for the text it needs, when it needs it.</p>
+
+<h2>Three outcomes that look alike</h2>
+<div class="tbl"><table>
+<thead><tr><th>Status</th><th>Means</th><th>Who acts next</th></tr></thead>
+<tbody>
+<tr><td>Referred</td><td>The agent decided the claim needs a person's judgment or more information</td><td>A handler, as a decision</td></tr>
+<tr><td>Waiting for sign-off</td><td>The agent approved a payout over $1,000</td><td>A handler signs off, then it's paid</td></tr>
+<tr><td>Left for a handler</td><td>The agent failed twice to finish the claim</td><td>A handler works it from scratch</td></tr>
+</tbody></table></div>
+<p>Keep them apart in the data and on the dashboard. Mixing them up makes the straight-through rate meaningless and hides failures as if they were judgments.</p>
+
+<div class="note field"><h4>Goals, not scripts</h4>
+<p>Generated prompts tend to list every step: "first call get_claim, then call get_policy, then…". That makes the agent brittle and hides what matters. Write the goal (decide the claim as a careful handler would, against the wording and the manual), the rules that must hold, and what a good result looks like, and let the model choose its steps.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Agent = model + harness: context, workflow, state, subagents, permissions, observability, self-improvement.</li>
+  <li>Ready-made harnesses give you files, planning and subagents; your own gives you control.</li>
+  <li>A fresh context per unit of work keeps the coordinator small and isolates failures.</li>
+  <li>Search-and-read tools beat pasting long documents; distinguish referrals, sign-offs and failures.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="0"><p class="q-prompt">Why does <code>work_claim</code> return one line instead of the claim agent's full conversation?</p>
+<ol><li><button>So the queue agent's context stays small and one claim's details can't affect the next</button></li><li><button>Tools can only return one line</button></li><li><button>To hide errors</button></li><li><button>It's cheaper for the claim agent</button></li></ol>
+<p class="q-why">The subagent pattern is a context firewall: detail stays where it's used.</p></div>
+<div class="q" data-correct="2"><p class="q-prompt">The agent approves a $1,400 payout. Which status should the claim show?</p>
+<ol><li><button>Referred</button></li><li><button>Left for a handler</button></li><li><button>Waiting for sign-off</button></li><li><button>Paid</button></li></ol>
+<p class="q-why">It's a decision (approve) held for a handler's sign-off, not a referral and not a failure.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">What's the advantage of <code>search_documents</code> and <code>read_section</code> over putting the whole manual in the prompt?</p>
+<ol><li><button>The model can't read long prompts</button></li><li><button>It makes the agent deterministic</button></li><li><button>The manual stays secret</button></li><li><button>The agent reads only the sections a claim needs, so contexts stay short and cheap</button></li></ol>
+<p class="q-why">Just-in-time retrieval saves tokens and keeps the relevant text prominent.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w4)"><h2>Exercise: make it yours</h2>
+<p>Take the harness in a direction of your own: run the claim agent on a local model, add a tool that checks a customer's claim history, or apply the same queue-and-worker shape to a problem from your own job. Write up what you changed and what you measured.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.claude.com/en/api/agent-sdk/overview">Claude Agent SDK</a></li>
+  <li><a href="https://docs.langchain.com/oss/python/deepagents/overview">Deep Agents</a> and <a href="https://docs.langchain.com/oss/python/langchain/agents">create_agent</a> — LangChain</li>
+  <li><a href="../harness-engineering/">Harness Engineering</a> — the companion course on the harness itself</li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 1 Day 5 reference</a> — ed-donner/undercover (<code>week1day5_lab1</code>, <code>week1day5_lab2</code>, branch <code>week1day5-end</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

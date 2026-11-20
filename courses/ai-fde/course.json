@@ -1,0 +1,110 @@
+{
+ "slug": "ai-fde",
+ "title": "AI Forward Deployed Engineer",
+ "short": "FDE Course",
+ "kind": "a 3-week course",
+ "subtitle": "A 3-week course on taking an AI agent from pilot to production for a client",
+ "storage": "fde-course",
+ "hero": "queue",
+ "hero_modules": [
+  [
+   "m0",
+   1,
+   "Day 1",
+   "The FDE role, and a first agent"
+  ],
+  [
+   "m1",
+   1,
+   "Day 2",
+   "Frontier models and structured decisions"
+  ],
+  [
+   "m2",
+   1,
+   "Day 3",
+   "Building with coding agents"
+  ],
+  [
+   "m3",
+   1,
+   "Day 4",
+   "Open-weight models and token cost"
+  ],
+  [
+   "m4",
+   1,
+   "Day 5",
+   "Harness engineering"
+  ],
+  [
+   "m5",
+   2,
+   "Day 1",
+   "Evals and observability"
+  ],
+  [
+   "m6",
+   2,
+   "Day 2",
+   "Agentic RAG, MCP and memory"
+  ],
+  [
+   "m7",
+   2,
+   "Day 3",
+   "Durable state and human in the loop"
+  ],
+  [
+   "m8",
+   2,
+   "Day 4",
+   "Agent swarms"
+  ],
+  [
+   "m9",
+   2,
+   "Day 5",
+   "Self-improvement"
+  ],
+  [
+   "m10",
+   3,
+   "Day 1",
+   "The solutions architect"
+  ],
+  [
+   "m11",
+   3,
+   "Day 2",
+   "Security, guardrails and gateways"
+  ],
+  [
+   "m12",
+   3,
+   "Day 3",
+   "The enterprise context layer"
+  ],
+  [
+   "m13",
+   3,
+   "Day 4",
+   "Production deployment"
+  ],
+  [
+   "m14",
+   3,
+   "Day 5",
+   "Capstone and handover"
+  ]
+ ],
+ "weeks": [
+  "Become an AI Engineer",
+  "Become an AI Architect",
+  "Become an AI FDE"
+ ],
+ "accent": "#C2561F",
+ "time": "3 weeks, one project throughout",
+ "blurb": "Build one client project end to end: a claims agent that's evaluated, durable, secured and deployed, then handed over. Follows the syllabus of Ed Donner's AI FDE course.",
+ "motif": "<svg viewBox=\"0 0 120 64\"><rect x=\"2\" y=\"4\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#2F62B0\" opacity=\"1\"/><rect x=\"2\" y=\"19\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#2F62B0\" opacity=\"1\"/><rect x=\"2\" y=\"34\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#2F62B0\" opacity=\"1\"/><rect x=\"2\" y=\"49\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#2F62B0\" opacity=\"0.35\"/><rect x=\"42\" y=\"4\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#1E8A6E\" opacity=\"1\"/><rect x=\"42\" y=\"19\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#1E8A6E\" opacity=\"1\"/><rect x=\"42\" y=\"34\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#1E8A6E\" opacity=\"0.35\"/><rect x=\"42\" y=\"49\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#1E8A6E\" opacity=\"0.35\"/><rect x=\"82\" y=\"4\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#C2561F\" opacity=\"1\"/><rect x=\"82\" y=\"19\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#C2561F\" opacity=\"1\"/><rect x=\"82\" y=\"34\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#C2561F\" opacity=\"1\"/><rect x=\"82\" y=\"49\" width=\"36\" height=\"11\" rx=\"2\" fill=\"#C2561F\" opacity=\"0.35\"/></svg>"
+}

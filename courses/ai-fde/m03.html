@@ -1,0 +1,124 @@
+
+<section class="module" id="m2" data-title="Building with coding agents" data-wire="var(--w2)" data-group="Week 1: Become an AI Engineer">
+<div class="wire-band" style="--wire:var(--w2)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 1 · Day 3 · Module 2 of 14</p>
+  <h1>Building with coding agents</h1>
+  <p class="lede">An FDE has days, not months. Coding agents make it possible to build a working pilot in an afternoon, but only if you stay in charge: clear documents for the agent to work from, a plan you check, and automatic gates that stop broken code from landing. Today a coding agent builds Wayfarer's pilot, and you're the boss.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w2)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Choose a coding agent and set it up with an instructions file and MCP tools.</li>
+    <li>Write the documents that let an agent build what the client asked for.</li>
+    <li>Run a plan-then-implement workflow with verifiable success criteria per phase.</li>
+    <li>Put automatic quality gates in front of every commit, and know what humans must still own.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w2)">
+  <h2>Build: the pilot</h2>
+  <ol>
+    <li>Write <code>docs/SPEC.md</code> (the client's brief in their words), <code>docs/TECH_STACK.md</code>, <code>docs/PROCESS.md</code> and a short <code>AGENTS.md</code> that points to them.</li>
+    <li>Set up the gates: linting, type checks, unit tests with a coverage floor, end-to-end tests and a pre-commit hook, all run by one command.</li>
+    <li>Add the Playwright MCP server so the coding agent can check pages in a browser.</li>
+    <li>Ask the agent to plan the pilot into phases; review and edit the plan; then ask it to implement the plan, phase by phase, committing after each.</li>
+    <li>Review what it built yourself, run the queue, and write down what you'd change.</li>
+  </ol>
+  <p class="cost">Cost: a subscription to a coding agent, or a free one such as OpenCode with free models (expect to work in smaller steps).</p>
+</div>
+
+<h2>The landscape</h2>
+<div class="tbl"><table>
+<thead><tr><th>Kind</th><th>Examples</th><th>Good for</th></tr></thead>
+<tbody>
+<tr><td>AI-first editors</td><td>Cursor, Windsurf</td><td>Working in the code yourself with an agent beside you</td></tr>
+<tr><td>Editor extensions</td><td>GitHub Copilot, Cline</td><td>Adding agents to the editor you already use</td></tr>
+<tr><td>Terminal agents</td><td>Claude Code, Codex, OpenCode</td><td>Long, multi-file tasks the agent drives, including running commands and tests</td></tr>
+</tbody></table></div>
+<p>A coding agent is itself a harness around a model: the same loop, tools, context management and permissions you'll build for Wayfarer's agent. Here you're the harness's user; from Module 4 you're a harness builder.</p>
+
+<h2>Be the boss</h2>
+<ul>
+  <li><strong>You own what ships.</strong> "The agent wrote it" is not an answer a client accepts.</li>
+  <li><strong>Instructions as a map.</strong> Keep <code>AGENTS.md</code> short and point to detail (progressive disclosure), so the agent reads the spec when it needs the spec.</li>
+  <li><strong>A fresh context per task.</strong> Start a new session for each piece of work rather than one endless conversation.</li>
+  <li><strong>Plan, check, then build.</strong> Ask for a plan in phases, each with success criteria the agent can verify itself: tests, commands and their output, pages checked in a browser. Read it before saying go.</li>
+  <li><strong>Commit often,</strong> so any phase can be undone.</li>
+</ul>
+<figure class="code"><figcaption>AGENTS.md (a map, not an encyclopedia)</figcaption><pre><code># Wayfarer claims platform
+
+Read docs/SPEC.md for what the client wants and docs/TECH_STACK.md for how it's built.
+Follow docs/PROCESS.md for planning, testing and committing.
+Keep docs/STATUS.md current: what works, what's next, known problems.
+
+Never open data/evals/: it is the answer key.
+Never commit with --no-verify, and never lower a threshold to get a green run.</code></pre></figure>
+
+<h2>Gates, not hope</h2>
+<p>Agents write plausible code quickly, including plausible bugs. Automatic checks are what make speed safe: linting and formatting (ruff, ESLint, Prettier), static types (pyright, strict TypeScript), unit tests with a coverage floor (pytest, vitest), end-to-end tests in a real browser (Playwright), all behind one command such as <code>npm run check</code>, and a pre-commit hook (lefthook or pre-commit) that runs the fast ones on every commit. The rule that matters most: the agent may never weaken a check to make it pass. If a rule looks wrong, it stops and asks.</p>
+<div class="sim" data-sim="adlc-gates" style="--wire:var(--w2)" data-title="What gets through?" data-lede="A coding agent makes ten changes, some with defects. Choose the gates and see which defects are caught and which ship."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<h2>Let the agent see the app</h2>
+<p>With the Playwright MCP server, a coding agent can open the dashboard, click through it and check what it built, instead of guessing. In Claude Code: <code>claude mcp add playwright -- npx @playwright/mcp@latest</code>. Added this way it's local to you in this project; <code>--scope user</code> makes it available in all your projects, and <code>--scope project</code> shares it with your team through a checked-in file.</p>
+
+<h2>The shape of the pilot</h2>
+<p>Whatever the agent builds, insist on a few design rules in the spec, because later weeks depend on them:</p>
+<ul>
+  <li>A backend API (FastAPI with SQLite is plenty) owns the records. The agent reaches claims, policies and its own instructions only through that API.</li>
+  <li>Every operation has a clear name and a one-line description, which later become the agent's tools.</li>
+  <li>Paying a claim is its own operation that takes the amount, and the backend, not the agent, enforces the $1,000 sign-off rule.</li>
+  <li>A dashboard shows the queue, each claim with the agent's reasons, and the agent's steps as it works.</li>
+</ul>
+<figure class="code"><figcaption>backend/main.py: the rule lives in the system, not the prompt</figcaption><pre><code class="hl-py">from fastapi import FastAPI, HTTPException
+
+app = FastAPI()
+SIGN_OFF_LIMIT = 1000.00
+
+@app.post("/claims/{claim_id}/pay", operation_id="pay_claim")
+def pay_claim(claim_id: str, amount: float) -> dict:
+    """Pay an approved claim. Payouts over $1,000 need a handler's sign-off first."""
+    claim = db.get_claim(claim_id)
+    if claim.decision != "approve":
+        raise HTTPException(409, "Only approved claims can be paid")
+    if amount > SIGN_OFF_LIMIT and not claim.signed_off_by:
+        db.set_status(claim_id, "waiting_for_sign_off")
+        raise HTTPException(403, "Over $1,000: waiting for a handler's sign-off")
+    return db.record_payment(claim_id, amount)</code></pre></figure>
+
+<div class="note field"><h4>Passing tests aren't a review</h4>
+<p>A build can pass every check and still be messy: duplicated logic, prompts that spell out every step instead of stating the goal, names nobody would choose. Read the code. Many teams now add a review by a fresh agent, with no memory of writing the code, before each commit, and keep a human review of anything that matters.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Coding agents are harnesses around models; you are accountable for their output.</li>
+  <li>Short instructions that point to detailed docs, a fresh context per task, a reviewed plan with verifiable criteria, frequent commits.</li>
+  <li>Automatic gates catch what agents get wrong; never let an agent weaken them.</li>
+  <li>Put business rules such as payment limits in the system, where a model can't talk past them.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">The coverage check fails at 76% against a floor of 80%. The agent proposes lowering the floor to 75%. What should happen?</p>
+<ol><li><button>Accept it; 75% is close enough</button></li><li><button>Turn coverage off for this commit</button></li><li><button>Refuse: the agent writes the missing tests, or stops and asks if the rule seems wrong</button></li><li><button>Commit with <code>--no-verify</code></button></li></ol>
+<p class="q-why">Gates only protect you if they can't be moved by the thing they're checking.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why put the $1,000 sign-off rule in the backend rather than only in the agent's prompt?</p>
+<ol><li><button>A prompt can be misread or ignored; the backend refuses the payment whatever the agent does</button></li><li><button>Prompts can't contain numbers</button></li><li><button>It's faster</button></li><li><button>The dashboard needs it</button></li></ol>
+<p class="q-why">Constraints that matter belong in code the model can't bypass.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">What makes a phase's success criteria useful to a coding agent?</p>
+<ol><li><button>They're written as goals, like "make it good"</button></li><li><button>The agent can check each one itself: a test, a command's output, a page in the browser</button></li><li><button>There's only one per plan</button></li><li><button>They're kept secret from the agent</button></li></ol>
+<p class="q-why">Verifiable criteria let the agent know when a phase is done, and let you check that it is.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w2)"><h2>Exercise: review like a lead</h2>
+<p>Review the pilot your coding agent built as if a junior engineer had sent it: list five concrete problems (naming, duplication, missing tests for a business rule, a prompt that dictates steps, anything else), ask the agent to fix them one at a time in fresh sessions, and commit after each. Write a short PILOT.md with what you'd tell the client today.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://agents.md/">AGENTS.md</a> — a common format for coding-agent instructions</li>
+  <li><a href="https://docs.claude.com/en/docs/claude-code/mcp">Connect Claude Code to tools via MCP</a></li>
+  <li><a href="https://github.com/microsoft/playwright-mcp">Playwright MCP server</a></li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/docs">Week 1 Day 3 reference</a> — ed-donner/undercover (the spec and process documents; branch <code>week1day3-end</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

@@ -1,0 +1,103 @@
+
+<section class="module" id="m14" data-title="Capstone and handover" data-wire="var(--w14)" data-group="Week 3: Become an AI FDE">
+<div class="wire-band" style="--wire:var(--w14)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 3 · Day 5 · Module 14 of 14 · capstone</p>
+  <h1>Capstone and handover</h1>
+  <p class="lede">An engagement ends when the client can run the system without you. Today you add the last piece, a copilot that lets handlers drive the system in plain language, then hold the handover conversation: work the queue, review the claims that need a person, and answer the question the client asked on day two. Are the success criteria met? Then you tear everything down.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w14)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Design a copilot for a client's staff that acts with their identity and asks before anything irreversible.</li>
+    <li>Check success criteria in code, against the targets agreed in discovery.</li>
+    <li>Run a handover, and tear a deployment down completely, with proof that it's gone.</li>
+    <li>Scope a capstone of your own that uses everything in the course.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w14)">
+  <h2>Build: the copilot, the handover and the teardown</h2>
+  <ol>
+    <li>Plan the copilot with your coding agent and have a second agent review the plan before you build.</li>
+    <li>Build it as a hand-written LangGraph loop with tools for claims, customers, starting work and the context layer; a confirmation card before any payment; durable conversations; and a memory per handler.</li>
+    <li>Deploy it on its own runtime beside the claim agent, signed in as the handler, never with the agent's key.</li>
+    <li>Hold the handover as Rosa: work the queue with ten agents, ask why a claim needs her, send one back with a note, sign off another, and ask whether the success criteria are met.</li>
+    <li>Tear everything down, and check by name, by an account-wide resource search, and by the budget.</li>
+  </ol>
+  <p class="cost">Cost: cents for the build and handover. Budget figures update a few times a day, so check again the next day.</p>
+</div>
+
+<h2>The copilot</h2>
+<p>Handlers shouldn't need to learn a dashboard's every corner to ask "why does this claim need me?". A copilot in the sidebar answers questions and takes actions in plain language. Its design follows everything before it:</p>
+<div class="tbl"><table>
+<thead><tr><th>Concern</th><th>Design</th></tr></thead>
+<tbody>
+<tr><td>Identity</td><td>It acts with the signed-in handler's own credentials, so permissions and the audit trail are theirs. It never holds the claim agent's API key.</td></tr>
+<tr><td>Irreversible actions</td><td>Before any payment, it shows a confirmation card with the claim, amount and reason, and waits (an <code>interrupt()</code> in a durable graph).</td></tr>
+<tr><td>Durability</td><td>Each conversation is a thread with checkpoints in Postgres, so it survives restarts and can continue tomorrow.</td></tr>
+<tr><td>Runtime</td><td>Its own deployment and a session per conversation, separate from the claim agent.</td></tr>
+<tr><td>Memory</td><td>A namespace per handler: Rosa's preferences and notes, not the customers'.</td></tr>
+<tr><td>Facts</td><td>Questions like "are we meeting the targets?" are answered by code that computes the numbers, and the model explains them; it never estimates them.</td></tr>
+</tbody></table></div>
+<figure class="code"><figcaption>copilot.py: the success criteria, in code</figcaption><pre><code class="hl-py">TARGETS = {"accuracy": 0.85, "straight_through": 0.70, "unsigned_large_payouts": 0, "cost_per_claim": 0.05}
+
+@tool
+def check_success_criteria() -> dict:
+    """Compare the latest run with the targets agreed with the head of claims."""
+    run = api.latest_run_metrics()
+    checks = {
+        "accuracy": run["accuracy"] >= TARGETS["accuracy"],
+        "straight_through": run["straight_through"] >= TARGETS["straight_through"],
+        "unsigned_large_payouts": run["paid_over_limit_without_sign_off"] == TARGETS["unsigned_large_payouts"],
+        "cost_per_claim": run["cost_per_claim"] <= TARGETS["cost_per_claim"],
+    }
+    return {"met": all(checks.values()), "checks": checks, "run": run, "targets": TARGETS}</code></pre></figure>
+<p>Define the straight-through rate carefully: every claim not referred counts, including approvals waiting for sign-off, because the agent finished its part. Agree that definition with the client in discovery, not at handover.</p>
+<div class="sim" data-sim="success-criteria" style="--wire:var(--w14)" data-title="Are the success criteria met?" data-lede="Run the queue with your choice of agents and model, then check the result against the targets agreed in discovery."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<h2>The handover</h2>
+<p>A good handover is a working session, not a slide deck. The client's own expert drives the system while you watch: running the queue, reviewing what needs a person, overriding the agent, checking the numbers. Leave behind the documents they'll need without you: how to run it, monitor it, change its configuration, approve improvements, rotate its keys and switch it off; who owns what; and the evaluation they should rerun whenever anything changes.</p>
+
+<h2>Tear it down, and prove it</h2>
+<ul>
+  <li>Remove the runtimes, gateway and policy engine, memories, functions, roles and the CLI's bootstrap stack.</li>
+  <li>Check three ways: list the project's resources by name; search the whole region with a resource explorer (a new account has some default resources, so it won't be empty); and watch the budget over the next day or two.</li>
+  <li>Deactivate the IAM user's access key when you're finished with the cloud account.</li>
+</ul>
+
+<div class="note principle"><h4>Your capstone</h4>
+<p>Build your own LangGraph solution to a business problem where an agent makes decisions within limits: a variation on Wayfarer, or something from your own work. It needs human sign-off above a limit, checkpoints in a database, a context layer, memory per user, and deployment to a runtime. Decide how you'll measure success before you build. Then find a real user for it: experience delivering to someone who depends on it is what turns these skills into the FDE role.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>A copilot acts as the person using it, asks before irreversible actions, and computes facts in code.</li>
+  <li>Success criteria agreed in discovery are checked in code at handover.</li>
+  <li>Handover means the client runs it without you, with the documents to do so.</li>
+  <li>Teardown is part of the job, and it's checked, not assumed.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">Why does the copilot act with the handler's own sign-in instead of the claim agent's API key?</p>
+<ol><li><button>The key is too long</button></li><li><button>So it can only do what that handler may do, and every action is recorded as theirs</button></li><li><button>The gateway blocks copilots</button></li><li><button>It's faster</button></li></ol>
+<p class="q-why">Acting on someone's behalf means acting with their permissions and audit trail.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">Rosa asks the copilot "are we meeting our targets?". How should it answer?</p>
+<ol><li><button>From its memory of earlier runs</button></li><li><button>By estimating from the claims it has seen today</button></li><li><button>By asking the claim agent</button></li><li><button>By calling a tool that computes the latest metrics against the agreed targets, then explaining the result</button></li></ol>
+<p class="q-why">Numbers come from code; the model explains them.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Is an approval waiting for sign-off counted as straight-through?</p>
+<ol><li><button>Yes, if that's the agreed definition: the agent finished its part and didn't refer it</button></li><li><button>Never</button></li><li><button>Only once it's paid</button></li><li><button>Only under $1,000</button></li></ol>
+<p class="q-why">Agree definitions in discovery so the handover has no surprises.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w14)"><h2>Exercise: write the handover pack</h2>
+<p>Write the runbook Wayfarer would keep: how to start and stop the system, run an evaluation, approve an improvement, rotate the keys, read the dashboards and costs, and who owns each part. Give it to someone who hasn't taken the course and see whether they can run a dispatch with it alone.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.aws.amazon.com/resource-explorer/latest/userguide/welcome.html">AWS Resource Explorer</a></li>
+  <li><a href="https://docs.langchain.com/oss/python/langgraph/interrupts">Interrupts</a> — LangGraph</li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 3 Day 5 reference</a> — ed-donner/undercover (<code>week3day5_lab1</code>, <code>week3day5_lab2</code>, branch <code>week3day5-end</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

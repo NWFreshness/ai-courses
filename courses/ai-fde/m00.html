@@ -1,0 +1,43 @@
+
+<section class="module" id="start" data-title="Start here" data-wire="var(--w0)" data-group="Course">
+<div class="wire-band" style="--wire:linear-gradient(90deg,var(--wk1),var(--wk2),var(--wk3));background:var(--wire)"></div>
+<div class="hero wide">
+  <p class="mod-num">A 3-week course · 15 modules · one client project throughout</p>
+  <h1>AI Forward Deployed Engineer</h1>
+  <p class="lede" style="max-width:42rem">A forward deployed engineer sits with a client and ships AI that changes how their business runs. In this course you play that role for Wayfarer, a fictional travel insurer: you build an agent that decides claims, prove it with evaluations, make it durable, safe and able to improve itself, deploy it to production, and hand it over.</p>
+  {{HERO}}
+  <p class="meta">Each card is a module, and it turns to Decided when you finish it. Start with <a href="#m0">Module 0: the FDE role, and a first agent</a>.</p>
+</div>
+
+<div style="max-width:46rem">
+<h2>The client</h2>
+<p>Wayfarer sells travel insurance on three plans, Saver, Standard and Elite. Three claims handlers, Rosa Delgado (the senior handler), Ben Achterberg and Ifeoma Nwosu, work a queue by hand: for each claim they read the story and the documents, check them against the policy wording and the claims manual, and approve it with a payout, decline it, or refer it for someone's judgment. Rosa signs off any payout over $1,000.</p>
+<p>The head of claims wants the queue handled straight through by an AI agent, as accurately as the handlers, with a person still signing off large payouts. That brief, and a measurable target, is what you'll deliver.</p>
+
+<h2>What you'll build</h2>
+<div class="tbl"><table>
+<thead><tr><th>Week</th><th>Milestone</th><th>What it adds</th></tr></thead>
+<tbody>
+<tr><td>1. Become an AI Engineer</td><td>A working pilot</td><td>A claims API, a dashboard for handlers, and an agent with a proper harness: its own tools, a fresh context per claim and searchable documents</td></tr>
+<tr><td>2. Become an AI Architect</td><td>An agent you can trust</td><td>Evaluations with a cost of mistakes, long-term memory, durable state with sign-off, a swarm of agents, and an improver that proposes changes you approve</td></tr>
+<tr><td>3. Become an AI FDE</td><td>Production and handover</td><td>Discovery and governance, injection defenses and a gateway with policies, a context layer, deployment to a managed runtime, and a copilot for handlers</td></tr>
+</tbody></table></div>
+
+<h2>Before you begin</h2>
+<p>You should be comfortable with Python and with calling an LLM API, and ideally have built a tool-using agent. The <a href="../agents/">Agentic AI</a> course covers the frameworks used here, and <a href="../harness-engineering/">Harness Engineering</a> goes deeper on the harness. Week 3 deploys to AWS; every step that costs money has a free route on Render instead, and the course says which is which.</p>
+
+<h2>How each module works</h2>
+<ol>
+  <li><strong>Objectives</strong> say what you'll be able to do.</li>
+  <li><strong>The build</strong> box lists what you add to the Wayfarer project.</li>
+  <li><strong>The lessons</strong> explain the ideas with short code, and a <strong>hands-on simulator</strong> lets you try the key idea in the page.</li>
+  <li><strong>Pitfalls, takeaways, a quiz and an exercise</strong> close the module, followed by references.</li>
+</ol>
+<p>Much of the product is built with a coding agent working from short written briefs, the way FDEs increasingly work. You stay accountable for what ships: you write the brief, check the plan, and review the result.</p>
+
+<h2>Where this syllabus comes from</h2>
+<p>The structure and the projects follow Ed Donner's <a href="https://github.com/ed-donner/undercover">undercover</a> repository, which accompanies his course <em>AI FDE: The Forward Deployed Engineer &amp; Agentic AI Architect</em>. There, the client is a fictional insurer called UnderCover. This course teaches the same subjects with its own client, data, code and exercises, so you don't need the repository; each module links to the matching day if you want a reference implementation. Written in November 2026. Model and cloud product names change quickly, so check what's current before you rely on one.</p>
+
+<div class="mod-foot"><span></span><a class="btn" href="#m0">Start Module 0</a></div>
+</div>
+</section>

@@ -1,0 +1,122 @@
+
+<section class="module" id="m9" data-title="Self-improvement" data-wire="var(--w9)" data-group="Week 2: Become an AI Architect">
+<div class="wire-band" style="--wire:var(--w9)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 2 · Day 5 · Module 9 of 14</p>
+  <h1>Self-improvement</h1>
+  <p class="lede">You now have evaluations, traces and a scoreboard. The last step of Week 2 closes the loop: an improver agent reads the results, proposes a change to the claim agent, a handler approves it, and fresh evaluations decide whether it stays. Done carelessly, this overfits and chases noise; done well, the agent gets better while you sleep, with a person in charge of every change.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w9)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Ground a model judge in an expert's answer, with a rubric of grades rather than free text.</li>
+    <li>Measure noise, and set objectives, tolerances and a budget for changes.</li>
+    <li>Build an improver that proposes changes for human approval, judged on held-out data.</li>
+    <li>Version an agent's configuration so any change can be compared and rolled back.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w9)">
+  <h2>Build: an improvement loop</h2>
+  <ol>
+    <li>Move the claim agent's prompt, model and reasoning effort into a versioned configuration, with diffs between versions and a Settings page.</li>
+    <li>Add a judge that grades each rationale against the handler's reason, and calibrate it on claims where you know the right grade.</li>
+    <li>Run the same version twice on the held-out claims to measure noise.</li>
+    <li>Build an improver that reads the results and proposes one change; pause for the senior handler's approval; evaluate on the held-out set; keep or roll back.</li>
+    <li>Add sign-in for handlers, so only Rosa can approve changes and large payouts.</li>
+  </ol>
+  <p class="cost">Cost: each round runs two evaluations, so a few rounds cost tens of cents on a small model. Set a credit limit on the key first.</p>
+</div>
+
+<h2>A judge that's grounded</h2>
+<p>A model judge has the same weakness as the model it judges: it generates plausible text. Ground it: give it the expert's answer to compare against, a rubric with a small set of grades, and ask for a grade, not an essay. Then check it against cases where you already know the right grade.</p>
+<figure class="code"><figcaption>judge.py</figcaption><pre><code class="hl-py">from typing import Literal
+from pydantic import BaseModel
+
+RUBRIC = """A: the handler's grounds and policy section, and better expressed (clearer, with the figures, no jargon)
+B: the same grounds and the same section of the wording as the handler's reason
+C: partly the same: a ground or the section is missing, or it adds a ground the handler didn't give
+F: different grounds, or it contradicts the handler"""
+
+class Grade(BaseModel):
+    reason: str
+    grade: Literal["A", "B", "C", "F"]
+
+judge = ChatOpenAI(model=JUDGE_MODEL, base_url=OPENROUTER, api_key=KEY).with_structured_output(Grade)
+
+def grade(rationale: str, handler_reason: str) -> int:
+    g = judge.invoke(f"Grade the agent's rationale against the handler's.\n\n{RUBRIC}\n\n"
+                     f"Handler: {handler_reason}\n\nAgent: {rationale}")
+    return {"F": 0, "C": 1, "B": 2, "A": 3}[g.grade]</code></pre></figure>
+
+<h2>Noise first, then changes</h2>
+<p>Run the same version of the agent twice on the same claims and the scores will differ. That difference is <strong>noise</strong>, and any "improvement" smaller than it means nothing. Set three things before the improver runs:</p>
+<ul>
+  <li><strong>Objectives:</strong> floors a version must meet, such as 80% accuracy on the held-out set.</li>
+  <li><strong>Noise thresholds:</strong> how much a score must improve to count as better.</li>
+  <li><strong>Tolerances:</strong> how much another score may fall, such as cost per claim, before the change is rejected.</li>
+</ul>
+<figure class="code"><figcaption>Keep or roll back</figcaption><pre><code class="hl-py">def keep(new: dict, old: dict) -> tuple[bool, str]:
+    missed = [k for k, floor in OBJECTIVES.items() if new[k] < floor]
+    better = [k for k in ("accuracy", "grade") if new[k] > old[k] + NOISE[k]]
+    worse = [k for k in ("accuracy", "grade") if new[k] < old[k] - TOLERANCE[k]]
+    if new["cost_per_claim"] > old["cost_per_claim"] * (1 + TOLERANCE["cost"]):
+        worse.append("cost_per_claim")
+    if missed: return False, f"missed objectives: {missed}"
+    if worse:  return False, f"got worse: {worse}"
+    if not better: return False, "no gain bigger than the noise"
+    return True, f"improved: {better}"</code></pre></figure>
+
+<h2>The improver</h2>
+<p>The improver is an agent with four tools: read the results (current configuration, scores, the evaluation set's mistakes, earlier rounds, budget), propose a change, run an evaluation, and propose a change to its own recipe. Proposals pause for approval with <code>HumanInTheLoopMiddleware</code>, so nothing changes without Rosa. A sensible recipe tries cheap levers first, a different model or reasoning effort, before adding rules to the prompt. The recipe's last step improves the recipe itself, which is what makes the loop recursive.</p>
+<figure class="code"><figcaption>improver.py (wiring)</figcaption><pre><code class="hl-py">from langchain.agents import create_agent
+from langchain.agents.middleware import HumanInTheLoopMiddleware
+from langgraph.checkpoint.memory import InMemorySaver
+
+approval = HumanInTheLoopMiddleware(interrupt_on={
+    "propose_change": {"allowed_decisions": ["approve", "reject"]},
+    "propose_recipe": {"allowed_decisions": ["approve", "reject"]}})
+
+improver = create_agent(model=strong_llm, tools=[read_results, propose_change, run_evaluation, propose_recipe],
+                        system_prompt=f"You improve Wayfarer's claim agent. Follow your recipe one step at a time.\n\n{RECIPE}",
+                        middleware=[approval], checkpointer=InMemorySaver())</code></pre></figure>
+
+<h2>Where overfitting creeps in</h2>
+<p>The improver sees the evaluation set's mistakes, so it can write rules that fix exactly those claims and nothing else. That's why the keep-or-roll-back decision uses the <strong>held-out</strong> set, which the improver never sees. But because held-out scores choose which versions survive, they're no longer an unbiased test either. Keep a third, untouched test set for the final number you report to the client.</p>
+<div class="sim" data-sim="improver" style="--wire:var(--w9)" data-title="Rounds of improvement" data-lede="Run improvement rounds with measurement noise. Decide on the evaluation set or the held-out set, and set the noise threshold."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<div class="note pitfall"><h4>A run of 25 isn't a ranking</h4>
+<p>On 25 claims, one claim is four percentage points. A model that scores 84% against another's 80% may simply have been luckier. Run more claims, run them more than once, and treat small differences as ties.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Ground judges in expert answers with a fixed rubric, and calibrate them.</li>
+  <li>Measure noise before trusting any improvement; set objectives, thresholds, tolerances and a budget.</li>
+  <li>Proposals pause for a human; held-out data decides; a separate test set gives the final number.</li>
+  <li>Version every configuration so changes can be compared and rolled back.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">A change raises accuracy on the held-out set from 80% to 82%. Two runs of the unchanged version differed by 5 points. Keep it?</p>
+<ol><li><button>Yes, it improved</button></li><li><button>Yes, if the judge agrees</button></li><li><button>No: the gain is smaller than the noise, so there's no evidence it helped</button></li><li><button>No: changes are never kept</button></li></ol>
+<p class="q-why">An improvement has to clear the noise threshold to count.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why decide on the held-out set rather than the evaluation set the improver reads?</p>
+<ol><li><button>The improver can tailor changes to the evaluation set's mistakes, which wouldn't generalize</button></li><li><button>The held-out set is larger</button></li><li><button>It's cheaper to run</button></li><li><button>The evaluation set has no labels</button></li></ol>
+<p class="q-why">Judging on data the proposer saw rewards overfitting.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">What makes the judge's grades more trustworthy?</p>
+<ol><li><button>Asking for a long explanation</button></li><li><button>Using the same model as the agent</button></li><li><button>Letting it invent its own rubric</button></li><li><button>Comparing against the expert's reason, with fixed grades, checked on cases with known grades</button></li></ol>
+<p class="q-why">Grounding and calibration turn a plausible opinion into a measurement.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w9)"><h2>Exercise: three rounds</h2>
+<p>Run three improvement rounds, approving or rejecting each proposal yourself, and keep a log of what was proposed, the held-out scores and the decision. At the end, score the surviving version once on a test set nobody has touched, and compare that number with its held-out score.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.langchain.com/oss/python/langchain/human-in-the-loop">Human-in-the-loop middleware</a> — LangChain</li>
+  <li><a href="https://supabase.com/docs/guides/auth">Supabase Auth</a></li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 2 Day 5 reference</a> — ed-donner/undercover (<code>week2day5</code>, branch <code>week2day5-end</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

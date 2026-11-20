@@ -1,0 +1,139 @@
+
+<section class="module" id="m12" data-title="The enterprise context layer" data-wire="var(--w12)" data-group="Week 3: Become an AI FDE">
+<div class="wire-band" style="--wire:var(--w12)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 3 · Day 3 · Module 12 of 14</p>
+  <h1>The enterprise context layer</h1>
+  <p class="lede">So far the agent's knowledge lives in files you copied into the project. In a real business, that knowledge belongs to teams: Product owns the plans, Claims Operations owns the rules, Legal owns the wording, and each changes on its own schedule. Today you give that knowledge a home of its own, a context layer the agent reads as tools, with every fact traceable to an owner, plus a memory of each customer.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w12)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Describe the four parts of an enterprise context layer and where each kind of data lives.</li>
+    <li>Serve business knowledge to agents as an MCP server, with provenance on every file.</li>
+    <li>Route an agent's tools through a gateway, and record the full context behind each decision.</li>
+    <li>Give an agent per-customer memory with extraction strategies and namespaces.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w12)">
+  <h2>Build: a context server and a customer memory</h2>
+  <ol>
+    <li>Split Wayfarer's knowledge into files, each with a header naming its source system, owner and review date: plans, claim rules, the glossary, the data dictionary, reference data, the wording and the manual.</li>
+    <li>Serve them as a small MCP server with lookup and search tools, deploy it as a second function behind IAM auth, and add it to the gateway as a target.</li>
+    <li>Have every decision store a full record: the lookups made, the sections relied on, and the memory used. Show it on the claim page as "Context used".</li>
+    <li>Create an AgentCore Memory with two strategies, facts about each customer and a summary of each claim, and give the agent a tool to search the current customer's memories.</li>
+  </ol>
+  <p class="cost">Cost: cents on AWS. The free route runs the context server on your laptop and keeps customer memory in Postgres.</p>
+</div>
+
+<h2>From context engineering to a context layer</h2>
+<p>Context engineering decides what a model sees for one task. An <strong>enterprise context layer</strong> makes the business's knowledge available to every agent, governed like any other data. It has four parts:</p>
+<div class="tbl"><table>
+<thead><tr><th>Part</th><th>Question</th><th>Wayfarer examples</th></tr></thead>
+<tbody>
+<tr><td>Meaning</td><td>What does the data mean?</td><td>The glossary ("deductible", "trip interruption"), the data dictionary</td></tr>
+<tr><td>Practice</td><td>How is the work done?</td><td>Claim rules (60-day filing window, third claim in 12 months is referred), the claims manual</td></tr>
+<tr><td>Permission</td><td>What may this agent see and do?</td><td>Read the rules, never the answer key; pay only under the limit</td></tr>
+<tr><td>Provenance</td><td>Where did it come from, and is it current?</td><td>Source system, owner and review date on every file</td></tr>
+</tbody></table></div>
+<p>Most of this is long-standing data governance and master data management, now with agents as consumers. The FDE's job is usually to connect what exists, not to invent it.</p>
+
+<h2>Where each kind of data lives</h2>
+<ul>
+  <li><strong>The gateway</strong> holds the security team's rules: who may call what, with which credentials.</li>
+  <li><strong>The context layer</strong> holds knowledge the business teams own, read through tools.</li>
+  <li><strong>Memory</strong> holds the agent's own notes, such as what it has learned about each customer.</li>
+  <li><strong>The database</strong> is the system of record (claims, policies, payments), reached only through the app's API.</li>
+</ul>
+
+<h2>A context server</h2>
+<figure class="code"><figcaption>context_server.py</figcaption><pre><code class="hl-py">import yaml
+from pathlib import Path
+from mcp.server.mcpserver import MCPServer           # on MCP SDK 1.x: from mcp.server.fastmcp import FastMCP
+
+mcp = MCPServer("wayfarer-context")
+FILES = {p.stem: yaml.safe_load(p.read_text()) for p in Path("context").glob("*.yaml")}
+
+def with_source(name: str, body) -> dict:
+    """Every answer says where it came from, who owns it, and when it was last reviewed."""
+    return {"source": FILES[name]["source"], "answer": body}
+
+@mcp.tool()
+def get_rule(rule: str) -> dict:
+    """Look up one of Claims Operations' rules by its id, such as filing_window or repeat_claims."""
+    match = next((r for r in FILES["claim_rules"]["rules"] if r["rule"] == rule), None)
+    return with_source("claim_rules", match or f"No rule named {rule}")
+
+@mcp.tool()
+def get_plan(plan: str) -> dict:
+    """Look up a plan's limits, waiting periods and deductible: saver, standard or elite."""
+    match = next((p for p in FILES["plans"]["plans"] if p["plan"] == plan), None)
+    return with_source("plans", match or f"No plan named {plan}")
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")</code></pre></figure>
+<figure class="code"><figcaption>context/claim_rules.yaml (header)</figcaption><pre><code class="hl-yaml">source:
+  system: Claims operations
+  owner: Head of claims operations
+  reviewed: "2026-10-01"
+rules:
+  - rule: filing_window
+    days: 60
+    applies: A claim must be filed within 60 days of the incident.</code></pre></figure>
+
+<h2>Memory per customer</h2>
+<p>A managed memory such as <strong>AgentCore Memory</strong> stores the raw conversation as events and extracts long-term records in the background using <strong>strategies</strong>: semantic (facts), summary (a summary per session), user preference, and episodic. <strong>Namespaces</strong> decide where each record lands and who can find it, using the actor and session IDs you pass.</p>
+<figure class="code"><figcaption>memory.py</figcaption><pre><code class="hl-py">control = boto3.client("bedrock-agentcore-control", region_name="us-east-1")
+memory_id = control.create_memory(
+    name="wayfarer_memory", eventExpiryDuration=7,
+    memoryStrategies=[
+        {"semanticMemoryStrategy": {"name": "customer_facts", "namespaceTemplates": ["/customers/{actorId}/facts/"]}},
+        {"summaryMemoryStrategy": {"name": "claim_summaries", "namespaceTemplates": ["/customers/{actorId}/claims/{sessionId}/"]}},
+    ])["memory"]["id"]
+
+data = boto3.client("bedrock-agentcore", region_name="us-east-1")
+
+def search_memory(customer_id: str, query: str) -> list[str]:
+    """The agent's tool: search this customer's memories only."""
+    found = data.retrieve_memory_records(memoryId=memory_id, namespacePath=f"/customers/{customer_id}",
+                                         searchCriteria={"searchQuery": query, "topK": 5})
+    return [r["content"]["text"] for r in found["memoryRecordSummaries"]]</code></pre></figure>
+<p>The customer ID in that tool comes from the claim the agent is working, set by your code, never chosen by the model. That's what keeps one customer's history out of another's decision.</p>
+<div class="sim" data-sim="context-layer" style="--wire:var(--w12)" data-title="What did the agent rely on?" data-lede="Work a claim and inspect the Context used panel. Then let a context file go stale, or widen the memory search, and see what changes."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<div class="note pitfall"><h4>Memory is eventually consistent</h4>
+<p>Extraction runs in the background, usually within a couple of minutes, so a memory written by one claim may not be searchable by the next one immediately. The agent also decides for itself whether to search, so a claim may not use memory at all; the "Context used" panel shows whether it did.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>A context layer covers meaning, practice, permission and provenance, governed like any data.</li>
+  <li>Gateway for security rules, context layer for business knowledge, memory for the agent's notes, database for records.</li>
+  <li>Serve knowledge as tools with provenance on every answer, and record the context behind each decision.</li>
+  <li>Scope memory by namespace from code, never by the model's choice.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">Where should the rule "a third claim within 12 months is referred" live?</p>
+<ol><li><button>In the agent's memory</button></li><li><button>In the context layer, owned by Claims Operations</button></li><li><button>In the gateway's policies</button></li><li><button>Only in the prompt</button></li></ol>
+<p class="q-why">It's business practice owned by a team, so it belongs in the context layer with its owner and review date.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">Why is the customer ID in <code>search_memory</code> set by code rather than passed by the model?</p>
+<ol><li><button>Models can't produce IDs</button></li><li><button>It's faster</button></li><li><button>AgentCore requires it</button></li><li><button>So a confused or manipulated model can't read another customer's memories</button></li></ol>
+<p class="q-why">Scoping data access is a permission decision, made in code.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">What does provenance on each context file let you do?</p>
+<ol><li><button>Trace any fact the agent used to its owner and check it's current</button></li><li><button>Make the files smaller</button></li><li><button>Skip evaluations</button></li><li><button>Encrypt the files</button></li></ol>
+<p class="q-why">When a decision is challenged, you need to know where its facts came from.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w12)"><h2>Exercise: an episodic memory</h2>
+<p>Add an episodic strategy to the memory and compare what it extracts with the facts and summaries over five claims from one customer. On the free route, build the same customer memory in Postgres with LangGraph's store and pgvector instead.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/memory.html">AgentCore Memory</a> — AWS</li>
+  <li><a href="https://py.sdk.modelcontextprotocol.io/">MCP Python SDK</a></li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 3 Day 3 reference</a> — ed-donner/undercover (<code>week3day3</code>, branch <code>week3day3-end</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

@@ -73,7 +73,22 @@ def hero_trace(cfg):
             '<p class="tr-head"><span>Trace</span><span>one span per module</span></p>' + "".join(rows) + '</div>')
 
 
-HEROES = {"loom": hero_loom, "tokens": hero_tokens, "trace": hero_trace}
+def hero_queue(cfg):
+    """AI FDE: the course as a work queue, three columns of module cards that turn 'Decided' as you finish."""
+    cols = []
+    for w, name in enumerate(cfg["weeks"], start=1):
+        cards = []
+        for i, (mid, week, day, title) in enumerate(cfg["hero_modules"]):
+            if week != w:
+                continue
+            cards.append(f'<a class="q-card" href="#{mid}" data-mod="{mid}" style="--i:{i}"><span class="q-id">M{int(mid[1:]):02d}</span>'
+                         f'<span class="q-title">{htmlmod.escape(title)}</span><span class="q-st" aria-hidden="true"></span></a>')
+        cols.append(f'<div class="q-col" style="--wc:var(--wk{w})"><h3>Week {w}</h3><p>{htmlmod.escape(name)}</p>'
+                    f'<div class="q-cards">{"".join(cards)}</div></div>')
+    return '<div class="queue" aria-label="Course map as a work queue: select a card to open that module.">' + "".join(cols) + '</div>'
+
+
+HEROES = {"loom": hero_loom, "tokens": hero_tokens, "trace": hero_trace, "queue": hero_queue}
 
 
 # ---------------------------------------------------------------- charts
@@ -277,7 +292,7 @@ def build_hub(courses):
 
 if __name__ == "__main__":
     folders = sorted(p for p in (ROOT / "courses").iterdir() if (p / "course.json").exists())
-    order = {"llm-engineering": 0, "agents": 1, "harness-engineering": 2}
+    order = {"llm-engineering": 0, "agents": 1, "harness-engineering": 2, "ai-fde": 3}
     folders.sort(key=lambda p: order.get(p.name, 9))
     print("Building courses:")
     built = [build_course(f) for f in folders]

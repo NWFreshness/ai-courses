@@ -1,0 +1,114 @@
+
+<section class="module" id="m3" data-title="Open-weight models and token cost" data-wire="var(--w3)" data-group="Week 1: Become an AI Engineer">
+<div class="wire-band" style="--wire:var(--w3)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 1 · Day 4 · Module 3 of 14</p>
+  <h1>Open-weight models and token cost</h1>
+  <p class="lede">Sooner or later a client asks whether they can run the model themselves: for privacy, for control, or because they think it'll be cheaper. An FDE needs a crisp answer. This module covers what open weights do and don't buy you, how to read a model's name, what fits on which hardware and how fast it'll run, and how to work out the cost of every decision.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w3)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Explain proprietary, open-weight and open-source models, and when open weights are worth it.</li>
+    <li>Read a model's name: size, active parameters, quantization and file format.</li>
+    <li>Estimate whether a model fits on a machine and how fast it will generate.</li>
+    <li>Compare models on accuracy, cost per claim and time, and choose from the Pareto front.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w3)">
+  <h2>Build: an open-model bake-off</h2>
+  <ol>
+    <li>Take the claims from Module 1 that don't depend on the claims manual, with a short prompt.</li>
+    <li>Run four to six open-weight models through OpenRouter and, if your machine can, one or two locally with Ollama.</li>
+    <li>Record accuracy, cost per claim and seconds per claim for each, plus Module 1's frontier models.</li>
+    <li>Plot accuracy against cost, mark the Pareto front, and write a one-paragraph recommendation for Wayfarer.</li>
+  </ol>
+  <p class="cost">Cost: cents through OpenRouter; local models are free but need memory (16 GB or more for a useful one).</p>
+</div>
+
+<h2>Proprietary, open-weight, open-source</h2>
+<div class="tbl"><table>
+<thead><tr><th>Kind</th><th>What you get</th><th>Examples of the kind</th></tr></thead>
+<tbody>
+<tr><td>Proprietary</td><td>An API. The weights stay with the lab</td><td>OpenAI's, Anthropic's and Google's frontier models</td></tr>
+<tr><td>Open-weight</td><td>The trained weights to run where you like, under a license</td><td>Llama, Qwen, Gemma, DeepSeek, gpt-oss</td></tr>
+<tr><td>Open-source</td><td>Weights plus training code and data, so the model can be reproduced</td><td>A smaller group, such as AllenAI's OLMo</td></tr>
+</tbody></table></div>
+<p>Open weights are mostly about <strong>privacy and control</strong>: the data never leaves your infrastructure, nobody can retire the model under you, and you can fine-tune it. They aren't automatically cheaper. A GPU you rent sits idle between requests, while an API charges only per token, so at low or bursty volume an API usually wins on cost.</p>
+
+<h2>Reading a model's name</h2>
+<p>Take <code>Qwen3-30B-A3B-Instruct-Q4_K_M.gguf</code>: a Qwen 3 model with 30 billion parameters in total, of which about 3 billion are <strong>active</strong> for each token (a mixture of experts), tuned to follow instructions, quantized to roughly 4 bits per weight with the K_M scheme, in the GGUF file format.</p>
+<ul>
+  <li><strong>Dense or mixture of experts.</strong> A dense model uses every weight for every token. A mixture of experts routes each token through a few expert blocks, so it has the knowledge of a large model and the speed of a small one, but it still needs memory for all its weights.</li>
+  <li><strong>Quantization.</strong> Storing weights in fewer bits. 8-bit costs little quality; 4-bit starts to show on hard tasks. Quantization-aware training (QAT) trains the model to expect it, which narrows the gap.</li>
+  <li><strong>Formats.</strong> safetensors for full-precision weights (Hugging Face, vLLM), GGUF for quantized models on llama.cpp, Ollama and LM Studio, MLX for Apple silicon.</li>
+</ul>
+
+<h2>What fits, and how fast</h2>
+<p>Memory needed is roughly the parameters times the bytes per weight, plus room for the context. Speed is set mostly by <strong>memory bandwidth</strong>: to produce each token the hardware reads every active weight once, so tokens per second is at most bandwidth divided by the active weights' size.</p>
+<figure class="code"><figcaption>Back-of-the-envelope sizing</figcaption><pre><code class="hl-py">def gigabytes(params_billion: float, bits: int) -> float:
+    return params_billion * bits / 8 * 1.2          # 20% for the KV cache and overhead
+
+def tokens_per_second(active_billion: float, bits: int, bandwidth_gb_s: float) -> float:
+    return bandwidth_gb_s / (active_billion * bits / 8)
+
+print(gigabytes(30, 4))                    # about 18 GB: needs a 24 GB GPU or a 32 GB Mac
+print(tokens_per_second(3, 4, 400))        # a mixture of experts on a 400 GB/s laptop: ~270 tokens/s at best
+print(tokens_per_second(27, 4, 400))       # a dense 27B model on the same laptop: ~30 tokens/s</code></pre></figure>
+
+<h2>Running and hosting</h2>
+<p>For a laptop, Ollama and LM Studio are the easy route; llama.cpp gives you control; vLLM is the server for serious throughput on GPUs. Beyond your own machine, you can rent a GPU (Runpod and others), use a managed endpoint, or call open models through OpenRouter. OpenRouter's providers for the same model differ in precision, features and price, so for consistent results pin them:</p>
+<figure class="code"><figcaption>Pinning providers on OpenRouter, and a local model through Ollama</figcaption><pre><code class="hl-py">response = client.chat.completions.create(
+    model="qwen/qwen3-30b-a3b", messages=messages,
+    extra_body={"provider": {"order": ["deepinfra", "together"], "allow_fallbacks": False,
+                             "quantizations": ["fp8"], "data_collection": "deny"}})
+
+local = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")   # same code, a local model</code></pre></figure>
+
+<h2>The cost of a decision</h2>
+<p>Every model call reports its token usage. Turn it into a cost per claim, and multiply by Wayfarer's monthly claim volume, so the client compares the pilot with the cost of handling claims by hand rather than with a sticker price.</p>
+<figure class="code"><figcaption>Cost per claim from usage</figcaption><pre><code class="hl-py">PRICES = {"input": 0.20, "cached": 0.02, "output": 1.60}     # $ per million tokens, from the model's page
+
+def cost(usage) -> float:
+    cached = getattr(usage.prompt_tokens_details, "cached_tokens", 0) or 0
+    fresh = usage.prompt_tokens - cached
+    return (fresh * PRICES["input"] + cached * PRICES["cached"] + usage.completion_tokens * PRICES["output"]) / 1e6</code></pre></figure>
+<div class="sim" data-sim="pareto" style="--wire:var(--w3)" data-title="Pick a model for the client" data-lede="Simulated results for a dozen models on Wayfarer's claims. Add the client's constraints and see what's left on the Pareto front."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<div class="note pitfall"><h4>A baseline before a leaderboard</h4>
+<p>Before comparing models, score the dumbest strategy: approve every claim. On a queue where most claims deserve approval, that alone can get most decisions right. A model that barely beats it isn't doing much, which is why Module 5 adds stricter scores.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Open weights buy privacy and control; they aren't automatically cheaper.</li>
+  <li>A model's name tells you its size, active parameters, quantization and format.</li>
+  <li>Memory sets what fits; bandwidth divided by active weights sets the speed.</li>
+  <li>Pin providers for consistent results, work out cost per decision, and choose from the Pareto front under the client's constraints.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">Why does a 30B mixture-of-experts model with 3B active parameters run much faster than a dense 27B model on the same laptop?</p>
+<ol><li><button>It uses less memory</button></li><li><button>Each token only reads the active weights, so far fewer bytes cross the memory bus per token</button></li><li><button>It's quantized more aggressively</button></li><li><button>It skips the attention layers</button></li></ol>
+<p class="q-why">Generation speed is bandwidth-bound by the weights read per token. It still needs memory for all 30B.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">A client wants open weights "to save money" on 200 claims a day. What's the honest answer?</p>
+<ol><li><button>Yes, open weights are always cheaper</button></li><li><button>No, open models can't decide claims</button></li><li><button>Only if they buy a supercomputer</button></li><li><button>At that volume an API is usually cheaper; open weights are worth it for privacy and control</button></li></ol>
+<p class="q-why">Dedicated hardware costs the same whether or not it's busy; per-token APIs scale with use.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why pin providers when calling an open model through OpenRouter?</p>
+<ol><li><button>Providers differ in quantization, features and price, which changes results</button></li><li><button>OpenRouter requires it</button></li><li><button>It makes the model open-source</button></li><li><button>Pinning is free and fallbacks cost extra</button></li></ol>
+<p class="q-why">The same model name can behave differently at different precisions and serving stacks.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w3)"><h2>Exercise: a local pilot</h2>
+<p>Run your Module 1 decider against a local model with Ollama and the same claims. Report accuracy, seconds per claim and the memory it used, and estimate what Wayfarer would pay per month to host the best open model on a rented GPU versus calling it through OpenRouter at 5,000 claims a month.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://openrouter.ai/docs/features/provider-routing">Provider routing</a> — OpenRouter</li>
+  <li><a href="https://ollama.com">Ollama</a> · <a href="https://lmstudio.ai">LM Studio</a> · <a href="https://github.com/ggml-org/llama.cpp">llama.cpp</a> · <a href="https://docs.vllm.ai">vLLM</a></li>
+  <li><a href="https://huggingface.co/docs/hub/gguf">GGUF</a> — Hugging Face</li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 1 Day 4 reference</a> — ed-donner/undercover (<code>week1day4</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

@@ -1,0 +1,125 @@
+
+<section class="module" id="m13" data-title="Production deployment" data-wire="var(--w13)" data-group="Week 3: Become an AI FDE">
+<div class="wire-band" style="--wire:var(--w13)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 3 · Day 4 · Module 13 of 14</p>
+  <h1>Production deployment</h1>
+  <p class="lede">The app and the context server are in the cloud; the agent still runs on your laptop. Today it moves to a managed agent runtime, where each request gets an isolated session, secrets come from an identity service, and you pay only while a session works. You'll also bring back the sign-off pause, now with a second option for the handler: send it back with a note.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w13)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Configure an agent for production: settings, secrets, callers, limits, logs and cost.</li>
+    <li>Develop, deploy, invoke and remove an agent with the AgentCore CLI.</li>
+    <li>Design work across sessions: long dispatches, cold starts, and claims resumed in a new session.</li>
+    <li>Prevent two dispatches running at once with a lock and a heartbeat.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w13)">
+  <h2>Build: the agent on a managed runtime</h2>
+  <ol>
+    <li>Deploy a hello-world agent with the AgentCore CLI, then a small LangGraph agent; compare a cold and a warm session.</li>
+    <li>Pause a claim in one session and resume it in another with a handler's note, from checkpoints in Postgres.</li>
+    <li>Turn the agent's service into an AgentCore app that runs the same on your laptop and on Runtime, with its secrets in AgentCore Identity.</li>
+    <li>Bring back the approval pause with two buttons: Sign off (the app pays) and Send back with a note (the agent decides again).</li>
+    <li>Add a run lock in the database with a heartbeat from the agent, then run a swarm from the deployed dashboard.</li>
+  </ol>
+  <p class="cost">Cost: Runtime charges only while a session is working, so cents. The CLI's first deploy creates a bootstrap stack with a KMS key at about $1 a month; delete it when you finish. The free route runs the agent as a second Render service.</p>
+</div>
+
+<h2>Configuring an agent for production</h2>
+<div class="tbl"><table>
+<thead><tr><th>Concern</th><th>On Wayfarer</th></tr></thead>
+<tbody>
+<tr><td>Settings</td><td>Model, gateway URL, memory ID as environment variables; nothing hard-coded</td></tr>
+<tr><td>Secrets</td><td>The OpenRouter key and database URL in AgentCore Identity, fetched at run time</td></tr>
+<tr><td>Who may call it</td><td>Only the app's role, through IAM</td></tr>
+<tr><td>Limits</td><td>Sessions stop after a short idle timeout (60 seconds), but a session doing registered background work can run for hours</td></tr>
+<tr><td>Logs and cost</td><td>Runtime logs to CloudWatch; per-claim cost is recorded by the app; budget alerts stay on</td></tr>
+</tbody></table></div>
+
+<h2>The AgentCore CLI</h2>
+<figure class="code"><figcaption>Terminal: the whole lifecycle</figcaption><pre><code class="hl-sh">npm install -g @aws/agentcore@1.0.0-rc.5        # pin the CLI version you tested with
+agentcore create --name hello --template agent-python-minimal
+agentcore dev                                       # runs it locally on port 8080: /ping and /invocations
+agentcore deploy                                    # zips the code for Linux on ARM; CloudFormation, no Docker
+agentcore invoke --runtime agent --payload '{}'
+agentcore remove all --yes && agentcore deploy --yes   # removes everything from AWS</code></pre></figure>
+<figure class="code"><figcaption>agent/entrypoint.py: one app, laptop or Runtime</figcaption><pre><code class="hl-py">from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from langgraph.types import Command
+
+app = BedrockAgentCoreApp()
+
+@app.entrypoint
+def invoke(payload: dict, context) -> dict:
+    """Start a dispatch, or resume one claim after a handler's decision."""
+    if payload["action"] == "dispatch":
+        start_dispatch_in_background(payload["agents"])     # registered with the runtime so the session stays alive
+        return {"started": True, "session": context.session_id}
+    if payload["action"] == "send_back":
+        config = {"configurable": {"thread_id": payload["claim_id"]}}
+        state = claim_graph().invoke(Command(resume={"note": payload["note"]}), config, durability="sync")
+        return {"decision": state["decision"], "session": context.session_id}
+    return {"error": f"unknown action {payload['action']}"}
+
+if __name__ == "__main__":
+    app.run()</code></pre></figure>
+<p>The same file runs under <code>agentcore dev</code> and on Runtime, so what you test locally is what you deploy. Credentials come from a local env file in development and from AgentCore Identity once deployed.</p>
+
+<h2>Sessions and long work</h2>
+<ul>
+  <li><strong>One session, one dispatch.</strong> Starting a dispatch answers immediately ("started") while the dispatcher and its claim agents keep working in that session.</li>
+  <li><strong>Cold and warm.</strong> A new session takes seconds to start; a warm one answers fast. Don't create a session per tiny request if latency matters.</li>
+  <li><strong>Resuming elsewhere.</strong> A claim sent back days later resumes in a brand-new session, because its state is in Postgres checkpoints, not in the session's memory.</li>
+  <li><strong>One run at a time.</strong> The app takes a lock in the database before starting a dispatch, and the agent refreshes a heartbeat while it works. A second start is refused while the heartbeat is fresh; a stale heartbeat (the agent died) releases the lock.</li>
+</ul>
+<figure class="code"><figcaption>A run lock with a heartbeat</figcaption><pre><code class="hl-py">LOCK = """INSERT INTO run_lock (id, started_at, heartbeat_at) VALUES (1, now(), now())
+          ON CONFLICT (id) DO UPDATE SET started_at = now(), heartbeat_at = now()
+          WHERE run_lock.heartbeat_at < now() - interval '5 minutes'
+          RETURNING id"""
+
+def try_start_dispatch() -> bool:
+    """True if we took the lock; False if another dispatch is still alive."""
+    return db.execute(LOCK).fetchone() is not None</code></pre></figure>
+<div class="sim" data-sim="runtime-sessions" style="--wire:var(--w13)" data-title="Sessions, checkpoints and the lock" data-lede="Start dispatches, send a claim back days later, and kill the agent mid-run. See what survives and what's refused."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<h2>Sign off, or send back</h2>
+<p>A claim over the limit pauses again, now with two choices. <strong>Sign off</strong>: the app pays immediately (the handler is the authority), then a short session lets the agent finish the claim's graph and save it to memory. <strong>Send back</strong> with a note, for example "the taxi receipt is in twice": the agent resumes in a new session with the note and decides again, which may pause again for sign-off.</p>
+
+<div class="note pitfall"><h4>Port clashes and stuck locks</h4>
+<p><code>agentcore dev</code> and the locally run agent both use port 8080, so stop one before starting the other. If the app restarts in the middle of a dispatch, new starts are refused until the heartbeat goes stale; reset it deliberately, never by deleting the lock while work may still be running.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Production means settings in config, secrets in an identity service, restricted callers, limits, logs and budgets.</li>
+  <li>One entrypoint runs locally and on the managed runtime; the CLI covers create, dev, deploy, invoke and remove.</li>
+  <li>Long work lives in a session; state that must outlive it lives in checkpoints.</li>
+  <li>A database lock with a heartbeat keeps one dispatch at a time without getting stuck forever.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">A claim is sent back three days after its session ended. How does the agent continue it?</p>
+<ol><li><button>It can't; the session is gone</button></li><li><button>The old session is restored from a snapshot</button></li><li><button>A new session loads the claim's thread from the Postgres checkpoints and resumes</button></li><li><button>The claim starts from scratch</button></li></ol>
+<p class="q-why">Durable state lives outside the session, so any session can pick it up.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why does the run lock use a heartbeat rather than a simple flag?</p>
+<ol><li><button>If the agent dies, a flag would block new runs forever; a stale heartbeat releases the lock</button></li><li><button>Flags aren't supported in Postgres</button></li><li><button>Heartbeats make dispatches faster</button></li><li><button>AgentCore requires heartbeats</button></li></ol>
+<p class="q-why">Locks need a way to expire when their owner disappears.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">What does the AgentCore CLI's first deploy leave in your account that keeps costing money?</p>
+<ol><li><button>Nothing</button></li><li><button>A running EC2 instance</button></li><li><button>A Docker registry</button></li><li><button>A bootstrap stack with a KMS key, about $1 a month, until you delete it</button></li></ol>
+<p class="q-why">Teardown includes the bootstrap, not just the runtime.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w13)"><h2>Exercise: laptop versus cloud</h2>
+<p>Before you tear anything down, run a held-out evaluation from the deployed dashboard and the same evaluation on your laptop. Compare accuracy, wall-clock time and cost per claim, and explain any differences.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html">AgentCore Runtime</a> — AWS</li>
+  <li><a href="https://github.com/aws/bedrock-agentcore-sdk-python">Bedrock AgentCore SDK for Python</a></li>
+  <li><a href="https://render.com/docs">Render documentation</a> — the free route</li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 3 Day 4 reference</a> — ed-donner/undercover (<code>week3day4_lab1</code>, <code>week3day4_lab2</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

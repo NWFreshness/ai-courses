@@ -1,0 +1,98 @@
+
+<section class="module" id="m6" data-title="Agentic RAG, MCP and memory" data-wire="var(--w6)" data-group="Week 2: Become an AI Architect">
+<div class="wire-band" style="--wire:var(--w6)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 2 · Day 2 · Module 6 of 14</p>
+  <h1>Agentic RAG, MCP and memory</h1>
+  <p class="lede">Some claims turn on facts that aren't in the claim or the policy: whether a storm had been named when the customer bought cover, or what an unfamiliar product actually is. Handlers know these things or look them up. Today the agent gets a long-term memory it can search for itself, served over MCP, and you measure exactly how much it helps.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w6)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Explain RAG and agentic RAG, and evaluate retrieval with precision, recall and MRR.</li>
+    <li>Choose between RAG, agentic RAG and fine-tuning for a client's need.</li>
+    <li>Connect an agent to a vector store through an MCP server, with read-only access.</li>
+    <li>Tell short-term from long-term memory, and design what an agent remembers.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w6)">
+  <h2>Build: a memory of outside facts</h2>
+  <ol>
+    <li>Write 25 claims that each need one outside fact, and a list of 30-odd facts (dates of named storms, product descriptions, airline strikes) with the claim each one decides.</li>
+    <li>Run a local Qdrant MCP server, and have an assistant agent store the facts with <code>qdrant-store</code>.</li>
+    <li>Give the claim agent only <code>qdrant-find</code>: it can search the memory but not change it.</li>
+    <li>Run the claims with and without memory in Langfuse, scoring accuracy and a <code>found_fact</code> score for whether the right fact came back.</li>
+  </ol>
+  <p class="cost">Cost: cents. Qdrant runs locally and embeds text with a small local model, so there's no extra key.</p>
+</div>
+
+<h2>RAG and agentic RAG</h2>
+<p><strong>Retrieval-augmented generation</strong> chunks documents, embeds each chunk as a vector, and at question time retrieves the nearest chunks and puts them in the prompt. Classic RAG does one retrieval, with the user's words as the query. <strong>Agentic RAG</strong> makes retrieval a tool: the agent writes its own queries, searches as often as it needs, rephrases when a search comes back empty, and decides when it knows enough. It can do this itself or through a research subagent, which keeps the search results out of the main context.</p>
+<div class="tbl"><table>
+<thead><tr><th>Score</th><th>Question</th></tr></thead>
+<tbody>
+<tr><td>Precision@k</td><td>Of the k results returned, how many were relevant?</td></tr>
+<tr><td>Recall@k</td><td>Of the relevant items, how many were in the k returned?</td></tr>
+<tr><td>Mean reciprocal rank</td><td>On average, how high was the first relevant result? (1 for first place, ½ for second…)</td></tr>
+<tr><td>Found fact (agentic)</td><td>Across all the agent's searches, did the fact this claim needs come back at all?</td></tr>
+</tbody></table></div>
+
+<h2>RAG, agentic RAG or fine-tuning?</h2>
+<p>Use RAG when the knowledge changes or must be cited; agentic RAG when the right question isn't obvious from the input; fine-tuning when you need a new skill or format rather than new facts. For facts that keep arriving, agents learn best by updating their memory, which you can inspect, correct and delete, rather than their weights.</p>
+<div class="sim" data-sim="memory-rag" style="--wire:var(--w6)" data-title="Does the agent find the fact?" data-lede="Pick a claim, decide whether the agent has a memory and how it searches, and see what comes back."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<h2>MCP for your own agents</h2>
+<p>The Model Context Protocol connects AI applications to tools and data. A <strong>host</strong> (your agent program) holds a <strong>client</strong> per <strong>server</strong>; servers expose tools, resources and prompts; <strong>stdio</strong> servers run as local subprocesses and <strong>Streamable HTTP</strong> servers run elsewhere. MCP earns its place when a tool is shared, by several agents, several teams or off-the-shelf apps, or is maintained by someone else. A tool only your own agent uses is usually simpler as a plain function.</p>
+<figure class="code"><figcaption>memory.py: one server, two kinds of access</figcaption><pre><code class="hl-py">from langchain_mcp_adapters.client import MultiServerMCPClient
+
+client = MultiServerMCPClient({"memory": {
+    "transport": "stdio", "command": "uvx",
+    "args": ["--python", "3.12", "mcp-server-qdrant"],
+    "env": {"QDRANT_LOCAL_PATH": "memory/qdrant", "COLLECTION_NAME": "wayfarer-facts"}}})
+
+tools = {t.name: t for t in await client.get_tools()}            # qdrant-store and qdrant-find
+librarian = create_agent(llm, tools=[tools["qdrant-store"]], system_prompt="Store each fact you're given, one per call.")
+claim_agent = create_agent(llm, tools=[tools["qdrant-find"], get_policy, calculate_payout, record_decision],
+                           system_prompt=CLAIM_GOAL + "\nSearch your memory for any outside fact a claim depends on.")</code></pre></figure>
+<p>Giving the claim agent <code>qdrant-find</code> and not <code>qdrant-store</code> is a small permission decision with a big effect: a strange claim can't plant a false "fact" for later claims to find.</p>
+
+<h2>Short-term and long-term memory</h2>
+<p><strong>Short-term memory</strong> is the conversation or run in progress: messages, tool results, the to-do list. <strong>Long-term memory</strong> outlives the run. Decide what goes in it deliberately: facts about the world (as here), facts about each customer, summaries of past claims, or the agent's own lessons. Managed memory services, such as the one you'll use in Week 3, extract these automatically with <em>strategies</em> and keep each customer's memories in their own <em>namespace</em>.</p>
+
+<div class="note pitfall"><h4>Two practical snags</h4>
+<p><code>uvx</code> ignores your project's Python version, and some MCP servers can't install on the newest Python, so pin one with <code>--python 3.12</code>; otherwise you'll see a vague "connection closed" error. And Qdrant's local mode allows one process at a time, so don't run the librarian and the claim agent against the same folder at once.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Agentic RAG lets the agent write its own queries and search until it knows enough.</li>
+  <li>Measure retrieval separately from answers: precision, recall, MRR, or whether the needed fact came back.</li>
+  <li>Use MCP for shared or third-party tools; give agents the narrowest access, such as read-only search.</li>
+  <li>Memory is a design: decide what's remembered, for whom, and who can write it.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">The correct fact is returned third out of three. What's that query's reciprocal rank?</p>
+<ol><li><button>3</button></li><li><button>1</button></li><li><button>1/3</button></li><li><button>0</button></li></ol>
+<p class="q-why">Reciprocal rank is 1 divided by the position of the first relevant result.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why does the claim agent get <code>qdrant-find</code> but not <code>qdrant-store</code>?</p>
+<ol><li><button>So content in a claim can't write false facts into memory for later claims</button></li><li><button>Storing is slower</button></li><li><button>Qdrant only allows one tool per agent</button></li><li><button>MCP forbids writes</button></li></ol>
+<p class="q-why">Least privilege applies to memory as much as to payments.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">A tool will only ever be used by your own claim agent. Should it be an MCP server?</p>
+<ol><li><button>Yes, always</button></li><li><button>Usually not: a plain function is simpler, and MCP pays off when tools are shared or maintained elsewhere</button></li><li><button>Only if it's written in TypeScript</button></li><li><button>Only for read-only tools</button></li></ol>
+<p class="q-why">MCP is an integration standard; use it where integration is the problem.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w6)"><h2>Exercise: is a vector store even needed?</h2>
+<p>Replace the vector search with a plain word search over a JSON file of the same facts, and compare <code>found_fact</code> and accuracy. Then give each customer a small Markdown memory file the agent can read and append to, and decide what it should and shouldn't be allowed to write there.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://github.com/qdrant/mcp-server-qdrant">mcp-server-qdrant</a> — Qdrant</li>
+  <li><a href="https://github.com/langchain-ai/langchain-mcp-adapters">langchain-mcp-adapters</a></li>
+  <li><a href="https://modelcontextprotocol.io/">Model Context Protocol</a></li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 2 Day 2 reference</a> — ed-donner/undercover (<code>week2day2</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

@@ -1,0 +1,112 @@
+
+<section class="module" id="cheatsheet" data-title="Cheat sheet" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Cheat sheet</h1>
+<p class="lede">The patterns you'll reach for most, in the order the course builds them.</p></header>
+
+<h2>Decisions as data</h2>
+<figure class="code"><figcaption>Module 1</figcaption><pre><code class="hl-py">class ClaimDecision(BaseModel):
+    rationale: str                                   # first, so the model reasons before deciding
+    decision: Literal["approve", "decline", "refer"]
+    payout: float
+
+decision = llm.with_structured_output(ClaimDecision).invoke(messages)</code></pre></figure>
+
+<h2>Scoring</h2>
+<figure class="code"><figcaption>Module 5</figcaption><pre><code class="hl-py">is_right = answer["decision"] == expected["decision"] and abs(answer["payout"] - expected["payout"]) <= 1
+cost = {"decline": 1500, "approve": answer["payout"], "refer": 50}[answer["decision"]]   # when it disagrees
+kappa = (observed - expected_by_chance) / (1 - expected_by_chance)</code></pre></figure>
+
+<h2>Durable graph with a pause</h2>
+<figure class="code"><figcaption>Module 7</figcaption><pre><code class="hl-py">answer = interrupt({"claim_id": cid, "payout": payout})                 # inside the approval node
+graph = builder.compile(checkpointer=PostgresSaver(conn))
+graph.invoke(state, {"configurable": {"thread_id": cid}}, durability="sync")
+graph.invoke(Command(resume={"handler": "Rosa Delgado"}), {"configurable": {"thread_id": cid}})
+# payment: its own node, idempotent
+db.execute("INSERT INTO payments (claim_id, amount) VALUES (%s, %s) ON CONFLICT (claim_id) DO NOTHING", (cid, amt))</code></pre></figure>
+
+<h2>Swarm</h2>
+<figure class="code"><figcaption>Module 8</figcaption><pre><code class="hl-py">results: Annotated[list, operator.add]
+def fan_out(state): return [Send("work_claim", c) for c in state["claims"]]
+builder.add_node("work_claim", work_claim, retry_policy=RetryPolicy(max_attempts=4))
+dispatcher.invoke({}, {"max_concurrency": 5})</code></pre></figure>
+
+<h2>Guardrails and policy</h2>
+<figure class="code"><figcaption>Module 11</figcaption><pre><code class="hl-py">@before_agent(can_jump_to=["end"])
+def model_check(state, runtime):
+    if screen.invoke([SCREEN_PROMPT, state["messages"][0]]).instructions_found:
+        return {"messages": [{"role": "assistant", "content": "Referred"}], "jump_to": "end"}
+
+# Cedar on the gateway:
+# forbid(principal, action == AgentCore::Action::"app___pay_claim", resource)
+#   when { context.input.amount.greaterThan(decimal("1000.00")) };</code></pre></figure>
+
+<h2>Runtime</h2>
+<figure class="code"><figcaption>Module 13</figcaption><pre><code class="hl-sh">agentcore create --name NAME --template agent-python-minimal
+agentcore dev          # localhost:8080 /ping /invocations
+agentcore deploy
+agentcore invoke --runtime agent --payload '{"action": "dispatch"}'
+agentcore remove all --yes && agentcore deploy --yes</code></pre></figure>
+<div class="mod-foot"></div>
+</section>
+
+<section class="module" id="glossary" data-title="Glossary" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Glossary</h1></header>
+<dl class="gloss">
+  <dt>ADLC</dt><dd>The agent development lifecycle (discovery, R&amp;D, development, implementation, maintenance); also used for building code with coding agents.</dd>
+  <dt>Agentic RAG</dt><dd>Retrieval where the agent writes its own queries and searches as often as it needs.</dd>
+  <dt>AgentCore</dt><dd>Amazon Bedrock AgentCore: AWS's managed services for agents, including Runtime, Gateway, Identity, Memory and Policy.</dd>
+  <dt>Cedar</dt><dd>A policy language for permit and forbid rules; a forbid always overrides a permit.</dd>
+  <dt>Checkpoint</dt><dd>A saved copy of a graph's state after a step, under a thread ID.</dd>
+  <dt>Cohen's kappa</dt><dd>Agreement between two raters beyond what chance would give; 0 for a constant answer.</dd>
+  <dt>Context layer</dt><dd>Business knowledge served to agents with meaning, practice, permission and provenance.</dd>
+  <dt>Cost of mistakes</dt><dd>A business cost per kind of error, agreed with the client, summed over a run.</dd>
+  <dt>Durable execution</dt><dd>Running work so it can stop partway and carry on later from where it was.</dd>
+  <dt>FDE</dt><dd>Forward deployed engineer: an engineer embedded with a client to deliver AI into use.</dd>
+  <dt>Gateway</dt><dd>A service in front of APIs, tools or models that adds credentials and enforces rules.</dd>
+  <dt>Harness</dt><dd>Everything around the model that makes an agent work: context, workflow, state, subagents, permissions, observability.</dd>
+  <dt>Held-out set</dt><dd>Evaluation data the system being improved never sees, used to decide what to keep.</dd>
+  <dt>Idempotent</dt><dd>Safe to repeat: doing it twice has the same effect as doing it once.</dd>
+  <dt>Interrupt</dt><dd>A pause in a graph for outside input, resumed with <code>Command(resume=...)</code>.</dd>
+  <dt>Lethal trifecta</dt><dd>Private data, untrusted content and external communication in one agent.</dd>
+  <dt>Mixture of experts</dt><dd>A model that routes each token through a few expert blocks, so only some parameters are active.</dd>
+  <dt>Namespace</dt><dd>A path that scopes memory records, such as one per customer.</dd>
+  <dt>Noise</dt><dd>How much a score varies between runs of the same version; changes smaller than it mean nothing.</dd>
+  <dt>Pareto front</dt><dd>The options no other option beats on every measure at once.</dd>
+  <dt>Prompt injection</dt><dd>Text in an agent's input written to make it act against its instructions.</dd>
+  <dt>Quantization</dt><dd>Storing model weights in fewer bits to save memory and speed up generation.</dd>
+  <dt>Send</dt><dd>LangGraph's way to start one node run per item, for fan-out.</dd>
+  <dt>Straight-through rate</dt><dd>The share of claims the agent finishes without referring them to a person.</dd>
+  <dt>Swarm</dt><dd>Many agents working in parallel on independent pieces of work.</dd>
+</dl>
+<div class="mod-foot"></div>
+</section>
+
+<section class="module" id="sources" data-title="Sources and further reading" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Sources and further reading</h1>
+<p class="lede">Written in November 2026. The syllabus follows Ed Donner's AI FDE course and its repository; the client, data, explanations, code and exercises here are this course's own.</p></header>
+<h2>The reference course</h2>
+<ul class="sources">
+  <li><a href="https://github.com/ed-donner/undercover">ed-donner/undercover</a> — the reference syllabus and implementation, with a branch per day's build</li>
+  <li><a href="https://edwarddonner.com/2026/10/14/ai-fde-the-forward-deployed-engineer-agentic-ai-architect/">Course resources</a> — Ed Donner</li>
+</ul>
+<h2>Frameworks and tools</h2>
+<ul class="sources">
+  <li><a href="https://docs.langchain.com/oss/python/langgraph/overview">LangGraph</a> · <a href="https://docs.langchain.com/oss/python/langchain/overview">LangChain</a> · <a href="https://docs.langchain.com/oss/python/deepagents/overview">Deep Agents</a> · <a href="https://docs.claude.com/en/api/agent-sdk/overview">Claude Agent SDK</a></li>
+  <li><a href="https://langfuse.com/docs">Langfuse</a> · <a href="https://supabase.com/docs">Supabase</a> · <a href="https://openrouter.ai/docs">OpenRouter</a> · <a href="https://ollama.com">Ollama</a> · <a href="https://github.com/qdrant/mcp-server-qdrant">Qdrant MCP server</a></li>
+  <li><a href="https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html">Amazon Bedrock AgentCore</a> · <a href="https://docs.cedarpolicy.com/">Cedar</a> · <a href="https://render.com/docs">Render</a></li>
+</ul>
+<h2>Ideas</h2>
+<ul class="sources">
+  <li><a href="https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/">The lethal trifecta</a> — Simon Willison</li>
+  <li><a href="https://www.anthropic.com/engineering/building-effective-agents">Building effective agents</a> — Anthropic</li>
+  <li><a href="https://artificialanalysis.ai">Artificial Analysis</a> · <a href="https://metr.org/">METR</a></li>
+</ul>
+<h2>Companion courses</h2>
+<ul class="sources">
+  <li><a href="../llm-engineering/">LLM Engineering</a> · <a href="../agents/">Agentic AI</a> · <a href="../harness-engineering/">Harness Engineering</a></li>
+</ul>
+<div class="mod-foot"></div>
+</section>

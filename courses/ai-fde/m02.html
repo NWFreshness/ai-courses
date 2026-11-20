@@ -1,0 +1,117 @@
+
+<section class="module" id="m1" data-title="Frontier models and structured decisions" data-wire="var(--w1)" data-group="Week 1: Become an AI Engineer">
+<div class="wire-band" style="--wire:var(--w1)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 1 · Day 2 · Module 1 of 14</p>
+  <h1>Frontier models and structured decisions</h1>
+  <p class="lede">Wayfarer's brief arrives today. Before building anything elaborate, find out what one model call can do: give it a claim, the customer's policy and the wording, and get back a decision your code can use. Then try the same job as an agent, and see that more autonomy isn't automatically better.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w1)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Explain how a model becomes a product: tokens, context, reasoning, memory and tools.</li>
+    <li>Compare models on intelligence, speed and cost, and shortlist them for a task.</li>
+    <li>Get validated structured decisions from a model, with the reasoning written first.</li>
+    <li>Decide whether a task needs an agent or a single call, from measurements.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w1)">
+  <h2>Build: decide the first 25 claims</h2>
+  <ol>
+    <li>Write 25 sample claims for Wayfarer (or generate them), each with a customer, a policy and a handler's decision you agree with: the answer key.</li>
+    <li>Decide each claim with one structured call: the claim, the policy record and the wording go in, a <code>ClaimDecision</code> comes out.</li>
+    <li>Score against the answer key and compare two or three models on accuracy, cost and time.</li>
+    <li>Do the same job with an agent that has two tools, <code>get_policy</code> and <code>record_decision</code>, and compare.</li>
+  </ol>
+  <p class="cost">Cost: a few cents for 25 claims on a small model; free on <code>openrouter/free</code>, with noisier results.</p>
+</div>
+
+<h2>From a model to a product</h2>
+<p>A language model only predicts the next token. Six ideas turn that into something like a chat assistant, and you'll use each of them deliberately:</p>
+<div class="tbl"><table>
+<thead><tr><th>Idea</th><th>What it means in practice</th></tr></thead>
+<tbody>
+<tr><td>Autoregression</td><td>Text is produced one token at a time, each conditioned on everything before it, so what the model writes first shapes what follows</td></tr>
+<tr><td>Chat</td><td>Training on conversations turns completion into question and answer, with system, user and assistant roles</td></tr>
+<tr><td>Reasoning</td><td>Reasoning models write hidden working before answering; effort settings trade cost and time for accuracy</td></tr>
+<tr><td>The illusion of memory</td><td>Every call is independent. The "memory" is your code sending the whole conversation again</td></tr>
+<tr><td>Context</td><td>Everything the model knows about this task is what's in the window: the policy wording, the claim, the history</td></tr>
+<tr><td>Tools</td><td>The model can ask your code to do something and read the result, which is how agents act</td></tr>
+</tbody></table></div>
+<p>You pay per token: input, cached input (cheaper, when the start of a prompt repeats exactly), reasoning and output (most expensive). Put the long, unchanging part of a prompt, such as the policy wording, first and the claim last, so repeated calls can hit the cache.</p>
+
+<h2>Choosing models</h2>
+<p>Public leaderboards such as <a href="https://artificialanalysis.ai">Artificial Analysis</a> plot models on intelligence, speed and price. The useful ones lie on the <strong>Pareto front</strong>: no other model is both better and cheaper. Measures such as METR's task time horizons show how long a task an agent can complete reliably. Use benchmarks to shortlist; then test the shortlist on the client's actual task, because that's the only result that counts.</p>
+
+<h2>The brief and the target</h2>
+<p>Wayfarer's head of claims wants claims "handled straight through, as accurately as our handlers". Turn that into numbers you can measure before you build: <strong>accuracy</strong> (right decision and a payout within a dollar of the handler's), the <strong>straight-through rate</strong> (claims not referred), and a rule that every payout over $1,000 waits for a handler's sign-off. Without agreed numbers, there's no way to say when the pilot works.</p>
+
+<h2>A decision as data</h2>
+<figure class="code"><figcaption>decide.py</figcaption><pre><code class="hl-py">import json, os
+from typing import Literal
+from pydantic import BaseModel, Field
+from langchain_openai import ChatOpenAI
+
+class ClaimDecision(BaseModel):
+    """A claims handler's decision on one claim."""
+    rationale: str = Field(description="Two or three sentences explaining the decision, citing the section of the wording")
+    decision: Literal["approve", "decline", "refer"]
+    payout: float = Field(description="Amount to pay in US dollars; 0 for a decline or a referral")
+
+llm = ChatOpenAI(model="openai/gpt-6-luna", base_url="https://openrouter.ai/api/v1",
+                 api_key=os.environ["OPENROUTER_API_KEY"], reasoning_effort="low")
+decider = llm.with_structured_output(ClaimDecision)
+
+SYSTEM = f"""You decide travel insurance claims for Wayfarer against the policy wording below.
+Approve with a payout, decline, or refer when a person's judgment or more information is needed.
+
+{WORDING}"""
+
+def decide(claim: dict, policy: dict) -> ClaimDecision:
+    return decider.invoke([{"role": "system", "content": SYSTEM},
+                           {"role": "user", "content": f"# Policy\n{json.dumps(policy)}\n\n# Claim\n{json.dumps(claim)}"}])</code></pre></figure>
+<p>The order of the fields matters. Because the model writes fields in order, putting <code>rationale</code> first makes it explain itself before committing to a decision and a number, which tends to improve both. The <code>Literal</code> type means the answer can only be one of three strings your code understands.</p>
+
+<h2>The same job as an agent</h2>
+<p>Now let an agent do it: give it <code>get_policy(policy_id)</code> and <code>record_decision(claim_id, decision, payout, rationale)</code> and only the claim. It has to look up what the single call was handed directly. Run both on the same claims and compare.</p>
+<div class="sim" data-sim="workflow-vs-agent" style="--wire:var(--w1)" data-title="One call or an agent?" data-lede="Decide 25 simulated claims with a single structured call or with an agent, and compare them with two baselines."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+<p>The usual result: the agent takes longer, costs more and does no better. Deciding a claim from known inputs is a fixed workflow, and code that gathers the inputs is more reliable than a model deciding to. Agents earn their place when the path can't be known in advance; the reference course reaches the same conclusion on its own claims.</p>
+
+<div class="note pitfall"><h4>Claims your inputs can't decide</h4>
+<p>Some claims depend on rules that live outside the policy wording, such as how to treat a third claim in a year, which sits in the claims manual. If those rules aren't in the context, expect the model to get those claims wrong whichever approach you use. Check what a claim needs before blaming the model.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Models are products built from tokens, context, reasoning, replayed memory and tools; you pay for every token.</li>
+  <li>Shortlist models with benchmarks, then decide on the client's task.</li>
+  <li>Agree measurable success criteria before building.</li>
+  <li>Structured output turns a decision into data; put the rationale first.</li>
+  <li>A fixed workflow is usually better done as code plus one call than as an agent.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">Why is <code>rationale</code> the first field of <code>ClaimDecision</code>?</p>
+<ol><li><button>JSON requires alphabetical order</button></li><li><button>The model writes in order, so it reasons before committing to a decision and payout</button></li><li><button>It makes the output shorter</button></li><li><button>The API rejects other orders</button></li></ol>
+<p class="q-why">Generation is sequential: what comes first conditions what comes after.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">An agent and a single call get the same accuracy, but the agent costs three times as much. What should you do?</p>
+<ol><li><button>Use the agent; agents are the future</button></li><li><button>Use a bigger model for the agent</button></li><li><button>Average their answers</button></li><li><button>Use the single call: the task is a fixed workflow and the agent adds cost without benefit</button></li></ol>
+<p class="q-why">Measure, then choose the least autonomy that meets the target.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Which model belongs on the Pareto front for your task?</p>
+<ol><li><button>One that no other model beats on both accuracy and cost</button></li><li><button>The newest</button></li><li><button>The most expensive</button></li><li><button>Whichever tops a public leaderboard</button></li></ol>
+<p class="q-why">Off-front models are dominated: something else is both better and cheaper.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w1)"><h2>Exercise: the cheapest model that's good enough</h2>
+<p>Set a bar, such as 15 of your 25 claims right, and find the cheapest model on OpenRouter that clears it three runs in a row with the single-call version. Record each model's accuracy, cost per claim and seconds per claim in a table, and mark the Pareto front.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://artificialanalysis.ai">Artificial Analysis</a> — model comparisons on intelligence, speed and price</li>
+  <li><a href="https://metr.org/">METR</a> — measuring how long a task AI agents can complete</li>
+  <li><a href="https://docs.langchain.com/oss/python/langchain/structured-output">Structured output</a> — LangChain</li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/labs">Week 1 Day 2 reference</a> — ed-donner/undercover (<code>week1day2</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

@@ -1,0 +1,128 @@
+
+<section class="module" id="m0" data-title="The FDE role, and a first agent" data-wire="var(--w0)" data-group="Week 1: Become an AI Engineer">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 1 · Day 1 · Module 0 of 14</p>
+  <h1>The FDE role, and a first agent</h1>
+  <p class="lede">Before any client work, two foundations: what a forward deployed engineer actually does, and what an agent actually is. The second fits in thirty lines of Python: a model, one tool and a loop. You'll set up the project and write that agent today.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w0)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Describe the FDE role and the three disciplines it draws on.</li>
+    <li>Set up a project with uv, a coding editor, Node and an OpenRouter key, on paid or free models.</li>
+    <li>Write an agent from first principles: a model, a tool and a bounded loop.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w0)">
+  <h2>Build: your workshop and a first agent</h2>
+  <ol>
+    <li>Install git, VS Code (or another editor) with the Python and Jupyter extensions, <a href="https://docs.astral.sh/uv/">uv</a> and Node.</li>
+    <li>Create the project with <code>uv init wayfarer --python 3.12</code> and add <code>openai python-dotenv</code>.</li>
+    <li>Get an <a href="https://openrouter.ai">OpenRouter</a> key, put it in <code>.env</code> as <code>OPENROUTER_API_KEY</code>, and list <code>.env</code> in <code>.gitignore</code>.</li>
+    <li>Write the help-centre agent below and ask it a question it has to browse to answer.</li>
+  </ol>
+  <p class="cost">Cost: free on <code>openrouter/free</code>, or well under a cent per run on a small paid model. A typical run through the whole course costs about $10 in model calls, and every step has a free alternative.</p>
+</div>
+
+<h2>What a forward deployed engineer is</h2>
+<p>The term comes from Palantir, which embedded engineers with its customers in the 2000s rather than shipping software and leaving. The AI labs and many enterprises have since adopted the role. In the narrow sense, an FDE is a senior applied AI engineer working inside a client's organization; in the broad sense, any engineer who solves a real commercial problem with AI and delivers it to the people who use it.</p>
+<p>Job descriptions for the role ask for the same mix again and again, and this course is built around it:</p>
+<div class="tbl"><table>
+<thead><tr><th>Discipline</th><th>What it covers</th><th>Where in the course</th></tr></thead>
+<tbody>
+<tr><td>AI engineering</td><td>Models, prompts, tools, agents and harnesses; building fast with coding agents</td><td>Week 1</td></tr>
+<tr><td>AI architecture</td><td>Evaluations, memory, durable workflows, scaling, self-improvement</td><td>Week 2</td></tr>
+<tr><td>Forward deployment</td><td>Discovery, security, integration, production, handover and adoption</td><td>Week 3</td></tr>
+</tbody></table></div>
+<p>Two kinds of experience matter as much as the skills: solving a real business problem, measured in the business's terms, and delivering it to a customer who keeps using it after you leave. The Wayfarer project gives you a rehearsal of both.</p>
+
+<h2>The workshop</h2>
+<figure class="code"><figcaption>Terminal</figcaption><pre><code class="hl-sh">uv init wayfarer --python 3.12
+cd wayfarer
+uv add openai python-dotenv requests
+echo "OPENROUTER_API_KEY=sk-or-..." > .env
+echo ".env" >> .gitignore</code></pre></figure>
+<p>OpenRouter gives you hundreds of models behind one key and one API shape. The model name <code>openrouter/free</code> routes each request to a free model; free models are limited to a small number of requests a day (more once you've bought some credit), and their providers may train on what you send, so never send them anything confidential. Set a credit limit on your key so a bug can't spend more than you intend.</p>
+
+<h2>An agent is a model, a tool and a loop</h2>
+<p>The agent below answers questions by browsing a tiny help centre, kept in a dictionary so it runs offline. The model can ask to read a page; your code reads it and hands back the text; the loop continues until the model answers or runs out of steps.</p>
+<figure class="code"><figcaption>first_agent.py</figcaption><pre><code class="hl-py">import json, os
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv(override=True)
+client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.environ["OPENROUTER_API_KEY"])
+MODEL = "openrouter/free"            # or a small paid model, such as "openai/gpt-6-luna"
+
+PAGES = {
+    "/": "Wayfarer help centre. See /claims for making a claim and /plans for our plans.",
+    "/claims": "How to claim: see /claims/deadlines for time limits and /claims/documents for what to send.",
+    "/claims/deadlines": "File a claim within 60 days of the incident. Late claims need a reason.",
+    "/claims/documents": "Send receipts, a police report for theft, and a doctor's note for illness.",
+    "/plans": "Saver, Standard and Elite. See /plans/elite for our top plan.",
+    "/plans/elite": "Elite has no deductible and covers baggage up to $3,000.",
+}
+
+def read_page(path: str) -> str:
+    """Read a page of the Wayfarer help centre and return its text."""
+    return PAGES.get(path, f"There is no page at {path}. Try / to start again.")
+
+tools = [{"type": "function", "function": {"name": "read_page", "description": read_page.__doc__,
+    "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "A path such as /claims"}},
+                   "required": ["path"]}}}]
+
+def run_agent(question: str, max_steps: int = 10) -> str:
+    messages = [{"role": "system", "content": "Answer from the help centre only. Start at /."},
+                {"role": "user", "content": question}]
+    for step in range(1, max_steps + 1):
+        message = client.chat.completions.create(model=MODEL, messages=messages, tools=tools).choices[0].message
+        if not message.tool_calls:
+            return message.content
+        messages.append(message)
+        for call in message.tool_calls:
+            path = json.loads(call.function.arguments)["path"]
+            print(f"step {step}: read {path}")
+            messages.append({"role": "tool", "tool_call_id": call.id, "content": read_page(path)})
+    return "I ran out of steps before finding an answer."
+
+print(run_agent("How long do I have to file a claim?"))</code></pre></figure>
+<p>That's the whole idea. Everything else in this course, frameworks, harnesses, memory, durability, gateways, is software around this loop to make it reliable, safe and useful for a business. Note three habits already: the tool returns a helpful message when a page doesn't exist, rather than crashing; the loop has a hard step limit; and the system prompt says where the agent's knowledge may come from.</p>
+
+<div class="sim" data-sim="maze-agent" style="--wire:var(--w0)" data-title="Watch the loop find its way" data-lede="A mock model browses the help centre to answer a question. Change the step limit and run it a few times."><p class="sim-fallback">This hands-on simulator needs JavaScript.</p></div>
+
+<div class="note pitfall"><h4>Common setup problems</h4>
+<p>A <code>NameError</code> in a notebook usually means a cell above wasn't run, so run from the top. A missing key usually means an unsaved <code>.env</code>, or one named <code>.env.txt</code>. If imports fail, check the notebook is using the project's <code>.venv</code> kernel. A free model that wanders off course isn't broken: run it again, or try a paid one.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>An FDE combines AI engineering, AI architecture and forward deployment, and delivers to a real customer.</li>
+  <li>An agent is a model with tools in a loop, working toward a goal.</li>
+  <li>Even the smallest agent needs a step limit, tools that fail gracefully and a clear source of truth.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">What distinguishes a forward deployed engineer from an engineer who builds AI features in-house?</p>
+<ol><li><button>They only use open-source models</button></li><li><button>They never write code</button></li><li><button>They work with a client to solve that client's business problem and deliver it into use</button></li><li><button>They only build chatbots</button></li></ol>
+<p class="q-why">The role is defined by being embedded with a customer and accountable for an outcome there.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why does the loop have a <code>max_steps</code>?</p>
+<ol><li><button>A model can keep calling tools without ever answering, and every step costs time and money</button></li><li><button>OpenRouter requires it</button></li><li><button>The tool can only be called ten times</button></li><li><button>It makes answers more accurate</button></li></ol>
+<p class="q-why">The model decides when to stop, so your code needs its own limit.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">Which data is safe to send to a free model on OpenRouter?</p>
+<ol><li><button>Customer claims, if they're anonymized</button></li><li><button>Anything, since it's free</button></li><li><button>Internal policy documents</button></li><li><button>Public or made-up data, because free providers may keep and train on prompts</button></li></ol>
+<p class="q-why">Free tiers often allow training on inputs. Keep real client data on paid providers whose terms you've checked.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w0)"><h2>Exercise: a harder question</h2>
+<p>Add five more pages, including a dead end and a page that contradicts another, then ask a question whose answer needs two pages. Log every step. Run it five times on a free model and five on a paid one and count how often each finds the right answer within ten steps.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://openrouter.ai/docs/quickstart">OpenRouter quickstart</a></li>
+  <li><a href="https://docs.astral.sh/uv/">uv documentation</a></li>
+  <li><a href="https://github.com/ed-donner/undercover/tree/main/setup">Week 1 Day 1 reference</a> — ed-donner/undercover (setup and a first-principles agent)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>
