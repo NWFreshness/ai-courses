@@ -1,9 +1,9 @@
 <section class="module" id="m3" data-title="Week 3: Open source" data-wire="var(--w3)" data-group="Foundations">
 <div class="wire-band" style="--wire:var(--w3)"></div>
 <header class="mod-head">
-  <p class="mod-num">Week 3 · Module 3 of 9 · <code>week3/</code> (labs run in Google Colab)</p>
+  <p class="mod-num">Week 3 · Module 3 of 9 · runs on a Google Colab GPU</p>
   <h1>Open-source models with Hugging Face</h1>
-  <p class="lede">Week 3 moves from renting intelligence through an API to running models yourself. On a rented Colab GPU you use Hugging Face's high-level pipelines, look inside tokenizers, load and quantize a model, and build a meeting-minutes generator from an audio recording.</p>
+  <p class="lede">This week moves from renting intelligence through an API to running models yourself. On a rented GPU you use Hugging Face's high-level pipelines, look inside tokenizers, load and quantize a model, and chain two open models into a meeting-minutes generator.</p>
 </header>
 
 <div class="objectives" style="--wire:var(--w3)">
@@ -16,23 +16,22 @@
   </ul>
 </div>
 
-<h2>Notebook map</h2>
-<p>The notebooks in <code>week3/</code> are short pointers: each links to a Colab notebook where the real work happens. Open the link, choose <strong>File → Save a copy in Drive</strong>, and work in your copy.</p>
-<div class="tbl nbmap"><table>
-<thead><tr><th>File</th><th>Colab topic</th><th>Look for</th></tr></thead>
-<tbody>
-<tr><td><code>day1.ipynb</code></td><td>Introducing Colab</td><td>Runtimes, GPUs, and the Secrets panel</td></tr>
-<tr><td><code>day2.ipynb</code></td><td>Hugging Face pipelines</td><td>How much a single <code>pipeline(...)</code> call hides</td></tr>
-<tr><td><code>day3.ipynb</code></td><td>Tokenizers</td><td>Special tokens and chat templates across model families</td></tr>
-<tr><td><code>day4.ipynb</code></td><td>Models</td><td>Quantization config, <code>generate</code>, streaming, memory footprint</td></tr>
-<tr><td><code>day5.ipynb</code></td><td>Meeting minutes creator; plus a local token-prediction visualizer</td><td>Audio → transcript → minutes</td></tr>
-</tbody></table></div>
-<p class="cost">Cost: a free or low-cost T4 GPU runtime is enough for these notebooks, per the repo.</p>
+<div class="build" style="--wire:var(--w3)">
+  <h2>Project: meeting minutes from audio</h2>
+  <ol>
+    <li>Create a Colab notebook, switch the runtime to a T4 GPU, and add <code>HF_TOKEN</code> under Secrets. Accept the license on the Hugging Face page of any gated model you'll use (Llama models are gated).</li>
+    <li>Try five pipelines (sentiment, summarization, translation, question answering, zero-shot classification) on your own text.</li>
+    <li>Load the tokenizers of two model families and print their chat templates side by side.</li>
+    <li>Load a small instruct model in 4-bit, check its memory footprint, and stream a reply.</li>
+    <li>Transcribe a short audio recording with a speech-to-text model, then have the instruct model write minutes in Markdown: summary, decisions, action items with owners.</li>
+  </ol>
+  <p class="cost">Cost: a free or low-cost T4 runtime is enough.</p>
+</div>
 
 <h2>Colab and your Hugging Face token</h2>
-<p>Colab gives you a Linux machine with a GPU for as long as your session lasts. Choose a GPU runtime (Runtime → Change runtime type → T4), and store your Hugging Face token under the key-shaped <strong>Secrets</strong> icon rather than in a cell. Some models, including Meta's Llama family, are <em>gated</em>: you accept the license on the model's Hugging Face page first, and downloads fail with a 401 or 403 until you do.</p>
+<p>Colab gives you a Linux machine with a GPU for as long as your session lasts. Choose <strong>Runtime → Change runtime type → T4 GPU</strong>, and store your token under the key-shaped <strong>Secrets</strong> icon rather than in a cell; read it with <code>from google.colab import userdata; userdata.get("HF_TOKEN")</code> and log in with <code>huggingface_hub.login</code>. Gated models fail with an authorization error until you've accepted their license on the model's page.</p>
 <div class="note pitfall"><h4>Colab sessions are disposable</h4>
-<p>When the runtime disconnects, installed packages, downloaded models and files in <code>/content</code> are gone. Save outputs to Google Drive (Day 5 shows how to mount it) or push them to the Hugging Face Hub, and expect to re-run setup cells after a break.</p></div>
+<p>When the runtime disconnects, installed packages, downloaded models and files in <code>/content</code> are gone. Save outputs to Google Drive (mount it with <code>drive.mount</code>) or push them to the Hugging Face Hub, and expect to re-run setup cells after a break.</p></div>
 
 <h2>Pipelines: the high-level API</h2>
 <p>A pipeline bundles a default model, its tokenizer and the pre- and post-processing for a task. It's the quickest way to see what an open model can do.</p>
@@ -44,10 +43,10 @@ sentiment(<span class="s">"I'm getting the hang of this."</span>)          <span
 
 summarize = pipeline(<span class="s">"summarization"</span>, device=<span class="s">"cuda"</span>)
 summarize(long_text, max_length=<span class="s">60</span>)[<span class="s">0</span>][<span class="s">"summary_text"</span>]</code></pre></figure>
-<p>The same pattern covers named-entity recognition, question answering, translation, zero-shot classification, text generation and more, and the Diffusers library extends it to images. The trade-off is control: you get the task's default model and settings unless you pass your own.</p>
+<p>The same pattern covers named-entity recognition, question answering, translation, zero-shot classification, text generation, speech recognition and more; the Diffusers library extends it to images. The trade-off is control: you get the task's default model and settings unless you pass your own with <code>model=</code>.</p>
 
 <h2>Tokenizers and chat templates</h2>
-<p>In Week 1 you saw tokens from the outside. Here you see how each model family has its own tokenizer, with its own vocabulary and <strong>special tokens</strong> that mark where the system prompt, user turns and assistant turns start and stop. A chat model was trained on conversations wrapped in those markers, so you have to wrap yours the same way. The tokenizer's <strong>chat template</strong> does that for you.</p>
+<p>Each model family has its own tokenizer, with its own vocabulary and <strong>special tokens</strong> that mark where the system prompt, user turns and assistant turns start and stop. A chat model was trained on conversations wrapped in those markers, so yours must be wrapped the same way. The tokenizer's <strong>chat template</strong> does that for you.</p>
 <figure class="code"><figcaption>From messages to model input</figcaption>
 <pre><code><span class="k">from</span> transformers <span class="k">import</span> AutoTokenizer
 
@@ -55,12 +54,12 @@ tok = AutoTokenizer.from_pretrained(<span class="s">"meta-llama/Llama-3.2-1B-Ins
 messages = [{<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: <span class="s">"You are concise."</span>},
             {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Tell me a fact about octopuses."</span>}]
 prompt = tok.apply_chat_template(messages, tokenize=<span class="k">False</span>, add_generation_prompt=<span class="k">True</span>)
-print(prompt)    <span class="c"># shows the special tokens the model expects, ending where the assistant should start</span></code></pre></figure>
+print(prompt)    <span class="c"># the special tokens the model expects, ending where the assistant should start</span></code></pre></figure>
 <p>Print the template for two or three model families side by side and you'll see why mixing up tokenizers or skipping the template produces garbage: the model is being shown a format it never learned.</p>
 
 <h2>Models: loading, quantizing, generating</h2>
-<p>A model's weights are its parameters. At 16-bit precision each parameter takes two bytes, so an 8-billion-parameter model needs roughly 16 GB of GPU memory just to load, more than a T4's 15 GB. <strong>Quantization</strong> stores weights at lower precision. Loading in 4-bit cuts memory to roughly a quarter, at a small cost in quality, which is what makes these models fit on a cheap GPU.</p>
-<figure class="code"><figcaption>Loading a model in 4-bit and generating</figcaption>
+<p>At 16-bit precision each parameter takes two bytes, so an 8-billion-parameter model needs roughly 16 GB of GPU memory just to load, more than a T4 offers. <strong>Quantization</strong> stores weights at lower precision. Loading in 4-bit cuts memory to roughly a quarter, at a small cost in quality, which is what makes these models fit on a cheap GPU.</p>
+<figure class="code"><figcaption>Loading a model in 4-bit and streaming a reply</figcaption>
 <pre><code><span class="k">import</span> torch
 <span class="k">from</span> transformers <span class="k">import</span> AutoModelForCausalLM, BitsAndBytesConfig, TextStreamer
 
@@ -74,10 +73,10 @@ model.generate(inputs, max_new_tokens=<span class="s">120</span>, streamer=TextS
 <p>Printing <code>model</code> shows its architecture: an embedding layer, a stack of identical decoder layers with attention and feed-forward blocks, and a final layer that scores every token in the vocabulary. You'll meet these layer names again in Week 7, when QLoRA attaches small trainable adapters to some of them.</p>
 
 <h2>What "generation" actually is</h2>
-<p>Day 5 starts with a local visualizer that asks the OpenAI API to return, at each step, the top three candidate tokens and their log-probabilities, then draws them as a branching graph. It makes the abstract concrete: the model scores every possible next token, one is chosen, it's appended, and the process repeats. Settings such as temperature change how that choice is made.</p>
+<p>A model scores every possible next token, one is chosen, it's appended, and the process repeats. You can watch this through an API: ask for <code>logprobs=True, top_logprobs=3</code> and each step of the reply comes back with the three most likely candidates and their log-probabilities. Plot them as a branching tree and the abstraction becomes concrete. Settings such as temperature change how the choice is made.</p>
 
 <h2>Meeting minutes: two models in a row</h2>
-<p>The Day 5 project chains two open-source models: a speech-to-text model transcribes an audio file from your Google Drive, and a chat model turns the transcript into minutes in Markdown, with a summary, key points and action items. It's the same two-step shape as Week 1's brochure, now running entirely on models you host.</p>
+<p>The project chains two open models. A speech-to-text model (for example one from OpenAI's open Whisper family, through <code>pipeline("automatic-speech-recognition")</code>) transcribes the audio; then a chat model turns the transcript into minutes with a fixed structure. It's the same two-step shape as Week 1's brochure writer, now running entirely on models you host.</p>
 
 <h2>Open or closed?</h2>
 <div class="tbl"><table>
@@ -99,25 +98,25 @@ model.generate(inputs, max_new_tokens=<span class="s">120</span>, streamer=TextS
 <section class="quiz"><h2>Check your understanding</h2>
 <div class="q" data-correct="1"><p class="q-prompt">Loading a Llama model fails with an authorization error even though your token is set. Why?</p>
 <ol><li><button>Colab blocks Meta models</button></li><li><button>The model is gated; you must accept its license on Hugging Face first</button></li><li><button>The model needs a paid Colab tier</button></li><li><button>Tokens only work in pipelines</button></li></ol>
-<p class="q-why">Gated repositories require you to accept the model's terms on its Hugging Face page before your token can download it.</p></div>
+<p class="q-why">Gated repositories require you to accept the model's terms on its page before your token can download it.</p></div>
 <div class="q" data-correct="3"><p class="q-prompt">Roughly how much memory do the weights of an 8B-parameter model need in 4-bit?</p>
 <ol><li><button>About 32 GB</button></li><li><button>About 16 GB</button></li><li><button>About 8 GB</button></li><li><button>About 4–5 GB</button></li></ol>
-<p class="q-why">8 billion parameters × half a byte is about 4 GB, plus some overhead. At 16-bit it would be about 16 GB.</p></div>
+<p class="q-why">8 billion parameters × half a byte is about 4 GB, plus overhead. At 16-bit it would be about 16 GB.</p></div>
 <div class="q" data-correct="0"><p class="q-prompt">What does <code>apply_chat_template</code> do?</p>
 <ol><li><button>Wraps your messages in the special tokens and format the model was trained on</button></li><li><button>Translates messages into English</button></li><li><button>Sends the messages to the Hugging Face API</button></li><li><button>Quantizes the prompt</button></li></ol>
-<p class="q-why">Each model family has its own conversation format. The template produces it, ending where the assistant's reply should begin.</p></div>
+<p class="q-why">Each model family has its own conversation format; the template produces it, ending where the reply should begin.</p></div>
 <p class="quiz-score"></p></section>
 
 <section class="exercise" style="--wire:var(--w3)"><h2>Exercise: the same question, three ways</h2>
-<p>Ask one question three ways: through a pipeline, through a 4-bit open model with its chat template, and through a frontier API. Record the answer, the time taken and the memory footprint of the local model. Then print the chat template of two different model families and mark where the special tokens differ.</p>
+<p>Ask one question three ways: through a pipeline, through a 4-bit open model with its chat template, and through a frontier API. Record each answer, the time taken and the open model's memory footprint. Then print the chat templates of two model families and mark where their special tokens differ.</p>
 </section>
 
-<h2>Read the originals</h2>
+<h2>References</h2>
 <ul class="sources">
-  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week3">week3/</a> — links to each Colab notebook</li>
-  <li><a href="https://huggingface.co/docs/transformers/main_classes/pipelines">Pipelines</a> — Hugging Face documentation</li>
-  <li><a href="https://huggingface.co/docs/transformers/chat_templating">Chat templates</a> — Hugging Face documentation</li>
-  <li><a href="https://huggingface.co/docs/transformers/quantization/bitsandbytes">bitsandbytes quantization</a> — Hugging Face documentation</li>
+  <li><a href="https://huggingface.co/docs/transformers/main_classes/pipelines">Pipelines</a> — Hugging Face</li>
+  <li><a href="https://huggingface.co/docs/transformers/chat_templating">Chat templates</a> — Hugging Face</li>
+  <li><a href="https://huggingface.co/docs/transformers/quantization/bitsandbytes">bitsandbytes quantization</a> — Hugging Face</li>
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week3">Week 3 reference implementation</a> — ed-donner/llm_engineering</li>
 </ul>
 <div class="mod-foot"></div>
 </section>

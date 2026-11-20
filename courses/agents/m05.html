@@ -1,0 +1,265 @@
+
+<section class="module" id="m4" data-title="CrewAI teams" data-wire="var(--w4)" data-group="Weeks 2–5: Frameworks">
+<div class="wire-band" style="--wire:var(--w4)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 3 · Module 4 of 9</p>
+  <h1>CrewAI: agents as a team with roles</h1>
+  <p class="lede">CrewAI models a project the way a manager would: agents with roles, goals and backstories, tasks with expected outputs, and a crew that runs them in order or under a manager. Most of it is configuration in YAML. You'll run a debate, build a stock picker with a manager agent and memory, and assemble an engineering team that writes and tests code in a Docker sandbox.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w4)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Scaffold a CrewAI project and define agents and tasks in YAML.</li>
+    <li>Run crews sequentially or hierarchically under a manager agent.</li>
+    <li>Give agents built-in and custom tools, structured outputs and memory.</li>
+    <li>Let agents run the code they write, safely, in a throwaway container.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w4)">
+  <h2>Projects: a debate, a stock picker and an engineering team</h2>
+  <ol>
+    <li>Create a <code>debate</code> crew: a debater argues for and against a motion, and a judge on a different model decides.</li>
+    <li>Create a <code>stock_picker</code> crew: one agent finds companies in the news in a sector, another researches them, a third picks one and notifies you. Run it hierarchically with a manager, with Pydantic outputs and memory.</li>
+    <li>Create a <code>coder</code> crew with sandbox tools that run Python in Docker, and ask it for a program whose output you can check.</li>
+    <li>Grow it into an <code>engineering_team</code>: a lead writes a design, a backend engineer writes a module, a frontend engineer writes a Gradio UI for it, and a test engineer writes and runs unit tests.</li>
+  </ol>
+  <p class="cost">Cost: cents per run with small models; the engineering team, with several long outputs, can reach a dollar with large ones. Needs Docker running for the last two projects.</p>
+</div>
+
+<h2>Install and scaffold</h2>
+<figure class="code"><figcaption>Terminal</figcaption><pre><code class="hl-sh">uv tool install crewai==1.14.4      # pin: CrewAI makes breaking changes between versions
+crewai create crew debate           # choose a provider and model when asked
+cd debate
+crewai run                          # installs the project's environment and runs main.py</code></pre></figure>
+<p>CrewAI installs as a command-line tool, and each crew is its own small uv project. The scaffold gives you <code>src/debate/config/agents.yaml</code>, <code>config/tasks.yaml</code>, <code>crew.py</code> and <code>main.py</code>, plus a <code>.env</code> for that project's keys. Model names use the <code>provider/model</code> form, such as <code>openai/gpt-5.4-mini</code> or <code>anthropic/claude-sonnet-4-5</code>, which lets each agent run on a different provider.</p>
+
+<h2>Agents and tasks in YAML</h2>
+<figure class="code"><figcaption>config/agents.yaml</figcaption><pre><code class="hl-yaml">debater:
+  role: >
+    A compelling debater
+  goal: >
+    Present a clear argument either for or against the motion: {motion}.
+    You succeed if a judge finds your argument convincing.
+  backstory: >
+    You're an experienced debater with a knack for concise, convincing arguments.
+  llm: openai/gpt-5.4-mini
+
+judge:
+  role: >
+    Decide the winner of the debate on the arguments presented
+  goal: >
+    Given arguments for and against the motion: {motion}, decide which side
+    is more convincing, based purely on the arguments.
+  backstory: >
+    You are a fair judge known for weighing arguments without your own views.
+  llm: anthropic/claude-sonnet-4-5</code></pre></figure>
+<figure class="code"><figcaption>config/tasks.yaml</figcaption><pre><code class="hl-yaml">propose:
+  description: >
+    You are proposing the motion: {motion}. Make a clear, convincing argument in favor.
+  expected_output: >
+    Your argument in favor of the motion, concisely.
+  agent: debater
+  output_file: output/propose.md
+
+oppose:
+  description: >
+    You are opposing the motion: {motion}. Make a clear, convincing argument against.
+  expected_output: >
+    Your argument against the motion, concisely.
+  agent: debater
+  output_file: output/oppose.md
+
+decide:
+  description: >
+    Review both arguments and decide which side is more convincing.
+  expected_output: >
+    Your decision, and why.
+  agent: judge
+  output_file: output/decide.md</code></pre></figure>
+<p>Role, goal and backstory become the agent's system prompt; description and expected output become the task prompt. Placeholders such as <code>{motion}</code> are filled from the inputs you pass at kickoff. In a sequential crew, each task automatically sees the outputs of the tasks before it, which is how the judge reads both arguments.</p>
+<figure class="code"><figcaption>crew.py and main.py</figcaption><pre><code class="hl-py">from crewai import Agent, Crew, Process, Task
+from crewai.project import CrewBase, agent, crew, task
+
+@CrewBase
+class Debate():
+    """A debate with a judge."""
+
+    @agent
+    def debater(self) -> Agent:
+        return Agent(config=self.agents_config["debater"], verbose=True)
+
+    @agent
+    def judge(self) -> Agent:
+        return Agent(config=self.agents_config["judge"], verbose=True)
+
+    @task
+    def propose(self) -> Task:
+        return Task(config=self.tasks_config["propose"])
+
+    @task
+    def oppose(self) -> Task:
+        return Task(config=self.tasks_config["oppose"])
+
+    @task
+    def decide(self) -> Task:
+        return Task(config=self.tasks_config["decide"])
+
+    @crew
+    def crew(self) -> Crew:
+        return Crew(agents=self.agents, tasks=self.tasks, process=Process.sequential, verbose=True)
+
+# main.py
+def run():
+    result = Debate().crew().kickoff(inputs={"motion": "Every company should have an AI policy"})
+    print(result.raw)</code></pre></figure>
+<p>The decorators collect methods into <code>self.agents</code> and <code>self.tasks</code>, in the order they're defined, and <code>@CrewBase</code> loads the two YAML files. Run <code>crewai run</code> again and read the three files in <code>output/</code>.</p>
+
+<h2>Tools, structured output and memory</h2>
+<p>The <code>crewai-tools</code> package has ready-made tools; <code>SerperDevTool()</code> searches Google through Serper with your <code>SERPER_API_KEY</code>. Custom tools are decorated functions, just like the Agents SDK:</p>
+<figure class="code"><figcaption>tools/push_tool.py</figcaption><pre><code class="hl-py">from crewai.tools import tool
+from notify import push            # copy your Module 0 helper into the project
+
+@tool("Send Push Notification")
+def send_push_notification(message: str) -> str:
+    """Send a push notification to the user with this message."""
+    return push(message)</code></pre></figure>
+<figure class="code"><figcaption>crew.py for the stock picker (excerpt)</figcaption><pre><code class="hl-py">from pydantic import BaseModel, Field
+from crewai_tools import SerperDevTool
+
+class TrendingCompany(BaseModel):
+    name: str = Field(description="Company name")
+    ticker: str = Field(description="Stock ticker symbol")
+    reason: str = Field(description="Why it is in the news")
+
+class TrendingCompanyList(BaseModel):
+    companies: list[TrendingCompany]
+
+@CrewBase
+class StockPicker():
+    @agent
+    def trending_company_finder(self) -> Agent:
+        return Agent(config=self.agents_config["trending_company_finder"], tools=[SerperDevTool()])
+
+    @agent
+    def financial_researcher(self) -> Agent:
+        return Agent(config=self.agents_config["financial_researcher"], tools=[SerperDevTool()])
+
+    @agent
+    def stock_picker(self) -> Agent:
+        return Agent(config=self.agents_config["stock_picker"], tools=[send_push_notification])
+
+    @task
+    def find_trending_companies(self) -> Task:
+        return Task(config=self.tasks_config["find_trending_companies"], output_pydantic=TrendingCompanyList)
+
+    # research_trending_companies and pick_best_company tasks follow the same shape
+
+    @crew
+    def crew(self) -> Crew:
+        manager = Agent(config=self.agents_config["manager"], allow_delegation=True)
+        return Crew(agents=self.agents, tasks=self.tasks, process=Process.hierarchical,
+                    manager_agent=manager, memory=True, verbose=True)</code></pre></figure>
+<p><code>output_pydantic</code> makes a task return a validated object (read it from <code>result.pydantic</code>) and makes its output reliably parseable for the next task. <code>memory=True</code> turns on CrewAI's built-in memory, which stores what the crew learns in a local database using embeddings and recalls relevant items later, so a second run can avoid picking the same company. How memory is configured has changed between versions, so check the memory docs for yours.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 680 220" role="img" aria-label="Sequential and hierarchical crews. In a sequential crew, tasks run in order and each sees earlier outputs. In a hierarchical crew, a manager agent receives the goal, delegates tasks to the agent it thinks best, reviews the results and can send work back.">
+  <defs><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+  <text x="20" y="24" style="font-size:13px;font-weight:700">Sequential</text>
+  <rect x="20" y="40" width="84" height="40" rx="6" class="box"/><text x="62" y="65" text-anchor="middle" style="font-size:12px">task 1</text>
+  <rect x="124" y="40" width="84" height="40" rx="6" class="box"/><text x="166" y="65" text-anchor="middle" style="font-size:12px">task 2</text>
+  <rect x="228" y="40" width="84" height="40" rx="6" class="box"/><text x="270" y="65" text-anchor="middle" style="font-size:12px">task 3</text>
+  <path d="M104 60 H124" class="ln" marker-end="url(#a4)"/><path d="M208 60 H228" class="ln" marker-end="url(#a4)"/>
+  <text x="166" y="104" text-anchor="middle" class="muted" style="font-size:11px">fixed order; later tasks see earlier outputs</text>
+  <text x="370" y="24" style="font-size:13px;font-weight:700">Hierarchical</text>
+  <rect x="460" y="36" width="120" height="44" rx="6" fill="color-mix(in srgb,var(--w4) 18%,var(--paper))" stroke="var(--w4)" stroke-width="2"/><text x="520" y="56" text-anchor="middle" style="font-size:13px;font-weight:600">manager</text><text x="520" y="72" text-anchor="middle" class="muted" style="font-size:11px">delegates, reviews</text>
+  <rect x="370" y="150" width="90" height="40" rx="6" class="box"/><text x="415" y="175" text-anchor="middle" style="font-size:12px">finder</text>
+  <rect x="475" y="150" width="90" height="40" rx="6" class="box"/><text x="520" y="175" text-anchor="middle" style="font-size:12px">researcher</text>
+  <rect x="580" y="150" width="90" height="40" rx="6" class="box"/><text x="625" y="175" text-anchor="middle" style="font-size:12px">picker</text>
+  <path d="M495 80 C470 110 430 120 415 150" class="ln" marker-end="url(#a4)"/><path d="M520 80 V150" class="ln" marker-end="url(#a4)"/><path d="M545 80 C570 110 610 120 625 150" class="ln" marker-end="url(#a4)"/>
+  <text x="520" y="212" text-anchor="middle" class="muted" style="font-size:11px">the manager chooses who does each task</text>
+  <path id="p4a" d="M495 80 C470 110 430 120 415 150" fill="none"/>
+  <g class="live"><circle r="5" fill="var(--w4)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="2.4s" repeatCount="indefinite"><mpath href="#p4a"/></animateMotion></circle></g>
+</svg>
+<figcaption>A hierarchical crew trades predictability for a manager's judgment. The manager isn't listed among the crew's agents.</figcaption>
+</figure>
+
+<h2>Agents that run their own code</h2>
+<p>A coding agent is only useful if it can run what it writes, and you shouldn't let it run that code on your machine. The pattern: tools that read and write files in one sandbox folder, plus a tool that runs a file inside a fresh Docker container with only that folder mounted.</p>
+<figure class="code"><figcaption>tools/sandbox_tools.py</figcaption><pre><code class="hl-py">import subprocess
+from pathlib import Path
+from crewai.tools import tool
+
+SANDBOX = Path(__file__).resolve().parents[3] / "sandbox"
+SANDBOX.mkdir(exist_ok=True)
+
+@tool("Write Sandbox File")
+def write_sandbox_file(filename: str, content: str) -> str:
+    """Write text to a file in the sandbox, replacing any file with that name."""
+    path = (SANDBOX / filename).resolve()
+    if SANDBOX not in path.parents:
+        return "Refused: files must stay inside the sandbox."
+    path.write_text(content)
+    return f"Wrote {len(content)} characters to {filename}."
+
+@tool("Run Sandbox Python File")
+def run_sandbox_python(filename: str) -> str:
+    """Run a Python file from the sandbox in a fresh container and return what it printed."""
+    result = subprocess.run(
+        ["docker", "run", "--rm", "--network", "none", "--memory", "512m",
+         "-v", f"{SANDBOX}:/workspace", "-w", "/workspace", "python:3.13-slim", "python", filename],
+        capture_output=True, text=True, timeout=60)
+    return (result.stdout + result.stderr)[-4000:]
+
+sandbox_tools = [write_sandbox_file, run_sandbox_python]   # add list and read tools the same way
+for t in sandbox_tools:
+    t.cache_function = lambda *args, **kwargs: False         # results change between calls: don't cache</code></pre></figure>
+<p>Three safety choices are doing the work: <code>--rm</code> throws the container away, <code>--network none</code> stops the code from reaching the internet, and the path check stops the agent writing outside the sandbox. Returning stderr as well as stdout lets the agent see and fix its own errors. CrewAI caches tool results by default, which is right for a search and wrong for a tool whose answer depends on files that just changed.</p>
+
+<h2>The engineering team</h2>
+<div class="tbl"><table>
+<thead><tr><th>Agent</th><th>Task</th><th>Output</th></tr></thead>
+<tbody>
+<tr><td>Engineering lead</td><td>Turn the requirements into a design for one Python module: classes, methods and signatures</td><td><code>output/design.md</code></td></tr>
+<tr><td>Backend engineer</td><td>Implement the design as a single self-contained module, and run it</td><td><code>sandbox/accounts.py</code></td></tr>
+<tr><td>Frontend engineer</td><td>Write a minimal Gradio UI that demonstrates the backend</td><td><code>sandbox/app.py</code></td></tr>
+<tr><td>Test engineer</td><td>Write unit tests for the backend and run them in the sandbox</td><td><code>sandbox/test_accounts.py</code></td></tr>
+</tbody></table></div>
+<p>Pass the requirements and module name as inputs, use <code>context=[...]</code> on later tasks so the frontend and test tasks see the design and code, and use a stronger model for the lead and backend roles than for the others. A good first brief is a small trading-account system: deposit, withdraw, buy and sell shares at prices from a given function, report holdings and profit, and refuse impossible trades. You'll meet that module again in Week 6.</p>
+
+<div class="note field"><h4>Opinionated, for better and worse</h4>
+<p>CrewAI gets a multi-agent team running quickly, and the YAML keeps prompts readable for non-programmers. The cost is control: the framework writes prompts around yours, and a hierarchical manager can loop or skip work. Use <code>verbose=True</code> and tracing to see the full prompts, prefer sequential crews until you need a manager, and keep each task's expected output specific.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Agents are role, goal, backstory and model; tasks are description, expected output and an agent. YAML holds both.</li>
+  <li>Sequential crews run tasks in order with earlier outputs as context; hierarchical crews add a manager that delegates.</li>
+  <li><code>output_pydantic</code> for structured results, <code>memory=True</code> for recall across runs, custom <code>@tool</code> functions for anything else.</li>
+  <li>Agent-written code runs in a disposable, network-less container with one folder mounted.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">How does the judge in a sequential debate crew see the two arguments?</p>
+<ol><li><button>It reads the output files</button></li><li><button>You paste them into its task description</button></li><li><button>Earlier tasks' outputs are passed as context to later tasks automatically</button></li><li><button>Through memory</button></li></ol>
+<p class="q-why">In a sequential process each task receives the outputs of the tasks before it.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Your run-code tool keeps returning the output of an earlier version of the file. Why?</p>
+<ol><li><button>CrewAI cached the tool's earlier result for the same arguments</button></li><li><button>Docker caches Python files</button></li><li><button>The agent is lying</button></li><li><button>The sandbox folder is read-only</button></li></ol>
+<p class="q-why">Tool caching suits pure lookups. Disable it for tools whose results depend on changing state.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">Which Docker option stops agent-written code from sending your data anywhere?</p>
+<ol><li><button><code>--rm</code></button></li><li><button><code>--network none</code></button></li><li><button><code>-w /workspace</code></button></li><li><button><code>--memory 512m</code></button></li></ol>
+<p class="q-why"><code>--rm</code> deletes the container afterwards; only <code>--network none</code> removes network access.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w4)"><h2>Exercise: a crew for your own work</h2>
+<p>Design a three-agent sequential crew for a task you do regularly, such as preparing a weekly report or reviewing a document against a checklist. Give the last task an <code>output_pydantic</code> model with a pass/fail field. Then switch it to hierarchical with a manager and compare: did the manager improve the result, and how many more model calls did it take?</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.crewai.com/en/introduction">CrewAI documentation</a> (agents, tasks, crews, processes, memory)</li>
+  <li><a href="https://docs.crewai.com/en/concepts/tools">Tools</a> — CrewAI</li>
+  <li><a href="https://docs.docker.com/reference/cli/docker/container/run/">docker container run</a> — Docker documentation</li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/3_crewai">Week 3 reference implementation</a> — ed-donner/agents (see <code>reference/</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

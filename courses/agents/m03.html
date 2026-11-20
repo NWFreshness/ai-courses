@@ -1,0 +1,253 @@
+
+<section class="module" id="m2" data-title="An agent loop from scratch" data-wire="var(--w2)" data-group="Week 1: Foundations">
+<div class="wire-band" style="--wire:var(--w2)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 1 · Module 2 of 9</p>
+  <h1>An agent loop from scratch</h1>
+  <p class="lede">Every agent framework in this course wraps the same twenty lines of code. Write them yourself once and the frameworks stop being mysterious. You'll build a career assistant that answers as you, captures leads and pings your phone, check its replies with a second model, put it on the web, and then make the loop visible with a planning checklist.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w2)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Describe tools to a model with JSON Schema and dispatch its tool calls safely.</li>
+    <li>Write an agent loop with a turn limit, handling several tool calls per turn.</li>
+    <li>Add an evaluator that checks replies against rules and triggers a retry.</li>
+    <li>Deploy a Gradio agent to a free host with its keys kept out of the code.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w2)">
+  <h2>Project: a career assistant that works for you</h2>
+  <ol>
+    <li>Export your LinkedIn profile (or CV) as a PDF and write a short <code>summary.txt</code> about yourself.</li>
+    <li>Build a system prompt that has the model speak as you, grounded only in those two files.</li>
+    <li>Give it two tools: <code>record_user_details</code> for visitors who leave an email, and <code>record_unknown_question</code> for anything it can't answer. Both push a notification to your phone.</li>
+    <li>Wrap the loop in a Gradio chat interface, then add an evaluator model that rejects unprofessional or invented replies and asks for a rewrite.</li>
+    <li>Deploy it to Render's free tier, then build the second project at the end of the module: a terminal agent that plans with a checklist.</li>
+  </ol>
+  <p class="cost">Cost: cents to build; a hosted assistant answering a few visitors a day costs pennies with a small model.</p>
+</div>
+
+<h2>The loop</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 250" role="img" aria-label="The agent loop. Messages go to the model. If it asks for tools, your code runs each one, appends the results to the messages, and calls the model again. When it replies without tool calls, that reply is the answer. A turn limit stops runaway loops.">
+  <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+  <rect x="20" y="96" width="120" height="58" rx="6" class="box"/><text x="80" y="121" text-anchor="middle" style="font-size:13px;font-weight:600">messages</text><text x="80" y="139" text-anchor="middle" class="muted" style="font-size:11px">system, history, user</text>
+  <rect x="200" y="96" width="120" height="58" rx="6" fill="color-mix(in srgb,var(--w2) 18%,var(--paper))" stroke="var(--w2)" stroke-width="2"/><text x="260" y="121" text-anchor="middle" style="font-size:13px;font-weight:600">model</text><text x="260" y="139" text-anchor="middle" class="muted" style="font-size:11px">with tool schemas</text>
+  <polygon points="420,92 470,125 420,158 370,125" class="box"/><text x="420" y="122" text-anchor="middle" style="font-size:11px;font-weight:600">tool</text><text x="420" y="136" text-anchor="middle" style="font-size:11px;font-weight:600">calls?</text>
+  <rect x="530" y="20" width="130" height="58" rx="6" class="box"/><text x="595" y="45" text-anchor="middle" style="font-size:13px;font-weight:600">run each tool</text><text x="595" y="63" text-anchor="middle" class="muted" style="font-size:11px">your code, your rules</text>
+  <rect x="530" y="172" width="130" height="58" rx="6" class="box"/><text x="595" y="197" text-anchor="middle" style="font-size:13px;font-weight:600">final answer</text><text x="595" y="215" text-anchor="middle" class="muted" style="font-size:11px">no tool calls</text>
+  <path d="M140 125 H200" class="ln" marker-end="url(#a2)"/><path d="M320 125 H370" class="ln" marker-end="url(#a2)"/>
+  <path d="M440 105 C470 60 490 49 530 49" class="ln" marker-end="url(#a2)"/>
+  <path d="M440 145 C470 190 490 201 530 201" class="ln" marker-end="url(#a2)"/>
+  <path d="M595 20 C595 0 80 0 80 96" class="ln" marker-end="url(#a2)"/>
+  <text x="330" y="46" text-anchor="middle" class="muted" style="font-size:11px">append the request and one result per call, then go round again</text>
+  <text x="488" y="70" class="muted" style="font-size:11px">yes</text><text x="488" y="190" class="muted" style="font-size:11px">no</text>
+  <text x="260" y="186" text-anchor="middle" class="muted" style="font-size:11px">stop after N turns, whatever happens</text>
+  <path id="p2loop" d="M140 125 H420 C470 60 490 49 595 49 C595 0 80 0 80 96" fill="none"/>
+  <g class="live"><circle r="5" fill="var(--w2)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="5s" repeatCount="indefinite"><mpath href="#p2loop"/></animateMotion></circle></g>
+</svg>
+<figcaption>The model never runs anything. It asks; your code decides whether and how to act, and reports back.</figcaption>
+</figure>
+
+<h2>Tools: a schema and a function</h2>
+<p>A tool is two things: a description the model reads, written in JSON Schema, and a function your code runs when the model asks. The model only ever sees the description, so write it the way you'd brief a new colleague: what the tool does, when to use it, and what each argument means.</p>
+<figure class="code"><figcaption>tools.py</figcaption><pre><code class="hl-py">import json
+from notify import push
+
+def record_user_details(email: str, name: str = "not provided", notes: str = "not provided") -> dict:
+    push(f"New lead: {name}, {email}. Notes: {notes}")
+    return {"recorded": "ok"}
+
+def record_unknown_question(question: str) -> dict:
+    push(f"Question I couldn't answer: {question}")
+    return {"recorded": "ok"}
+
+TOOLS = {"record_user_details": record_user_details,
+         "record_unknown_question": record_unknown_question}
+
+schemas = [
+    {"type": "function", "function": {
+        "name": "record_user_details",
+        "description": "Record that a visitor wants to be in touch and gave an email address.",
+        "parameters": {"type": "object", "properties": {
+            "email": {"type": "string", "description": "The visitor's email address"},
+            "name": {"type": "string", "description": "Their name, if they gave it"},
+            "notes": {"type": "string", "description": "Anything worth noting about the conversation"}},
+          "required": ["email"], "additionalProperties": False}}},
+    {"type": "function", "function": {
+        "name": "record_unknown_question",
+        "description": "Record any question you couldn't answer from the information you were given.",
+        "parameters": {"type": "object", "properties": {
+            "question": {"type": "string", "description": "The question that couldn't be answered"}},
+          "required": ["question"], "additionalProperties": False}}},
+]
+
+def handle_tool_calls(tool_calls) -> list[dict]:
+    results = []
+    for call in tool_calls:
+        fn = TOOLS.get(call.function.name)
+        try:
+            args = json.loads(call.function.arguments)
+            result = fn(**args) if fn else {"error": f"No tool named {call.function.name}"}
+        except Exception as e:                       # report failures back; don't crash the loop
+            result = {"error": str(e)}
+        results.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)})
+    return results</code></pre></figure>
+<p>Dispatch through an explicit dictionary of allowed functions. Looking names up in <code>globals()</code> works in a notebook, but it lets the model call any function in your program, which is exactly the kind of power you don't want to hand over by accident.</p>
+
+<h2>The loop itself</h2>
+<figure class="code"><figcaption>agent.py</figcaption><pre><code class="hl-py">from openai import OpenAI
+from tools import schemas, handle_tool_calls
+
+client = OpenAI()
+MODEL = "gpt-5.4-mini"
+
+def run(messages: list, max_turns: int = 10) -> str:
+    for _ in range(max_turns):
+        response = client.chat.completions.create(model=MODEL, messages=messages, tools=schemas)
+        choice = response.choices[0]
+        if choice.finish_reason != "tool_calls":
+            return choice.message.content
+        messages.append(choice.message)                          # the model's request
+        messages.extend(handle_tool_calls(choice.message.tool_calls))   # one result per call
+    return "Sorry, I couldn't finish that. Please try rephrasing."</code></pre></figure>
+<p>Three details carry the weight. The model can ask for several tools in one turn, so handle every call and return a result for each <code>tool_call_id</code>, or the next request fails. Append the model's own request before the results, so the history reads in order. And cap the turns: a model that keeps calling tools will otherwise keep spending.</p>
+
+<h2>Speaking as you</h2>
+<figure class="code"><figcaption>app.py</figcaption><pre><code class="hl-py">import gradio as gr
+from pypdf import PdfReader
+from dotenv import load_dotenv
+from agent import run
+
+load_dotenv(override=True)
+NAME = "Alex Rivera"                      # you
+profile = "".join(page.extract_text() or "" for page in PdfReader("me/profile.pdf").pages)
+summary = open("me/summary.txt", encoding="utf-8").read()
+
+SYSTEM = f"""You are acting as {NAME} on {NAME}'s website, answering questions about
+{NAME}'s career, background, skills and experience. Be professional and engaging,
+as if talking to a potential client or employer.
+Answer only from the summary and profile below. If you don't know an answer,
+say so and use record_unknown_question to record the question, even if it seems trivial.
+If the visitor is interested in working together, ask for their email and record it
+with record_user_details.
+
+## Summary
+{summary}
+
+## Profile
+{profile}"""
+
+def chat(message, history):
+    history = [{"role": h["role"], "content": h["content"]} for h in history]
+    return run([{"role": "system", "content": SYSTEM}] + history + [{"role": "user", "content": message}])
+
+if __name__ == "__main__":
+    gr.ChatInterface(chat, title=f"Talk to {NAME}'s assistant").launch()</code></pre></figure>
+<p>Run <code>uv add pypdf</code>, then <code>uv run app.py</code>. Ask it something your profile covers, then something it doesn't (your favorite food), then say you'd like to hire you and give an email. You should get two notifications. Stripping history down to <code>role</code> and <code>content</code> drops extra fields Gradio adds, which some providers reject.</p>
+
+<h2>Check before you send: an evaluator</h2>
+<p>A chatbot speaking in your name can embarrass you. Add the evaluator half of the evaluator-optimizer pattern: after each reply, a second model call checks it against your rules and returns a structured verdict. If it fails, rerun with the feedback in the system prompt.</p>
+<figure class="code"><figcaption>evaluator.py</figcaption><pre><code class="hl-py">from pydantic import BaseModel
+from openai import OpenAI
+
+class Evaluation(BaseModel):
+    acceptable: bool
+    feedback: str
+
+judge = OpenAI()
+
+def evaluate(reply: str, message: str, history: list, rules: str) -> Evaluation:
+    prompt = (f"Rules for the assistant:\n{rules}\n\nConversation so far:\n{history}\n\n"
+              f"Latest user message:\n{message}\n\nAssistant's reply:\n{reply}\n\n"
+              "Is the reply acceptable? It must follow the rules, stay professional and "
+              "invent nothing beyond the provided information. Give brief feedback.")
+    response = judge.chat.completions.parse(model="gpt-5.4-mini",
+        messages=[{"role": "user", "content": prompt}], response_format=Evaluation)
+    return response.choices[0].message.parsed
+
+# in chat(): after reply = run(...)
+#   verdict = evaluate(reply, message, history, SYSTEM)
+#   if not verdict.acceptable:
+#       retry_system = SYSTEM + f"\n\nYour previous reply was rejected: {verdict.feedback}\nTry again."
+#       reply = run([{"role": "system", "content": retry_system}] + history + [{"role": "user", "content": message}])</code></pre></figure>
+<p><code>parse</code> with a Pydantic model asks the API for structured output and validates it, so <code>verdict.acceptable</code> is a real boolean, not text you have to interpret. Using a different model family as the judge catches more, because models share blind spots with themselves.</p>
+
+<h2>Put it on the web</h2>
+<p>Render's free tier runs a Gradio app with no code changes. (Hugging Face Spaces, the usual home for Gradio demos, stopped hosting them for free in July 2026.) Put <code>app.py</code>, <code>agent.py</code>, <code>tools.py</code>, <code>notify.py</code>, a <code>requirements.txt</code> and your <code>me/</code> folder in their own <strong>private</strong> GitHub repository, then create a Render web service from it:</p>
+<div class="tbl"><table>
+<thead><tr><th>Setting</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Build command</td><td><code>pip install -r requirements.txt</code></td></tr>
+<tr><td>Start command</td><td><code>python app.py</code></td></tr>
+<tr><td>Environment variables</td><td><code>OPENAI_API_KEY</code>, <code>PUSHOVER_USER</code>, <code>PUSHOVER_TOKEN</code>, plus <code>GRADIO_SERVER_NAME=0.0.0.0</code> and <code>GRADIO_SERVER_PORT=10000</code> so Gradio listens where Render expects</td></tr>
+</tbody></table></div>
+<p>Free services sleep after 15 minutes without visitors and take up to a minute to wake. Keys go in Render's dashboard, never in the repository.</p>
+
+<h2>Make the loop visible: planning with a checklist</h2>
+<p>The career assistant's loop is invisible: one or two tool calls, then an answer. Coding agents make their loops visible with a to-do list the model writes and ticks off. Two tools are enough to get the same behavior on any problem.</p>
+<figure class="code"><figcaption>planner.py: the model plans, works, and reports progress</figcaption><pre><code class="hl-py">from rich.console import Console
+checklist: list[str] = []
+done: list[bool] = []
+
+def report() -> str:
+    return "\n".join(f"{i + 1}. [{'x' if d else ' '}] {item}"
+                     for i, (item, d) in enumerate(zip(checklist, done)))
+
+def create_checklist(steps: list[str]) -> str:
+    """Add steps to the plan and return the full checklist."""
+    checklist.extend(steps); done.extend([False] * len(steps))
+    Console().print(report())
+    return report()
+
+def mark_complete(index: int, notes: str) -> str:
+    """Mark step `index` (from 1) complete, with a note on what was done."""
+    if not 1 <= index <= len(checklist):
+        return f"No step {index}. The checklist has {len(checklist)} steps."
+    done[index - 1] = True
+    Console().print(f"[green]done {index}:[/green] {notes}")
+    return report()
+
+SYSTEM = """Solve the problem you're given by using your checklist tools: first create a
+plan of steps, then carry out each step in turn, marking each complete with notes.
+When every step is complete, reply with the solution."""</code></pre></figure>
+<p>Write the two schemas, register both functions in a <code>TOOLS</code> dictionary, and run the same loop with a puzzle or a small analysis task and a higher <code>max_turns</code>. You'll watch a plan appear, then each step tick off in the terminal. Nothing about the loop changed; the tools gave the model a way to structure its own work.</p>
+
+<div class="note pitfall"><h4>Tool errors that kill the loop</h4>
+<p>If a tool raises and you don't catch it, the whole run dies, usually mid-conversation. Catch exceptions inside the dispatcher and return the error as the tool result. Models are good at reading "No step 7. The checklist has 5 steps." and correcting themselves.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>An agent is a loop: call the model, run what it asks for, append the results, repeat until it answers or a limit hits.</li>
+  <li>Tools are a schema the model reads plus a function you control; dispatch through an allow-list.</li>
+  <li>An evaluator with structured output turns "is this OK?" into a boolean you can act on.</li>
+  <li>Simple tools such as a checklist change how a model works, not just what it can reach.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">The model returns two tool calls in one response. You run only the first and call the model again. What happens?</p>
+<ol><li><button>The model runs the second tool itself</button></li><li><button>The API rejects the request, because every tool call needs a matching result</button></li><li><button>Nothing; the second call is ignored</button></li><li><button>The model repeats the first call</button></li></ol>
+<p class="q-why">Each <code>tool_call_id</code> in the assistant message needs a <code>tool</code> message answering it before the conversation can continue.</p></div>
+<div class="q" data-correct="2"><p class="q-prompt">Why is dispatching through <code>globals()</code> risky outside a notebook?</p>
+<ol><li><button>It's slower than a dictionary</button></li><li><button>It doesn't work with async functions</button></li><li><button>The model could name, and so trigger, any function in your program</button></li><li><button>JSON can't express function names</button></li></ol>
+<p class="q-why">An explicit allow-list means only the functions you chose to expose can ever run.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">What does the evaluator add that a stricter system prompt can't?</p>
+<ol><li><button>A separate check after the reply exists, with a verdict your code can act on, such as retrying</button></li><li><button>Lower cost</button></li><li><button>Faster replies</button></li><li><button>Access to more tools</button></li></ol>
+<p class="q-why">Prompts shape behavior; an evaluator verifies the result. Together they catch more than either alone.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w2)"><h2>Exercise: your own loop, from memory</h2>
+<p>In a new file, write the agent loop and a tool dispatcher from scratch without looking back, for an assistant in your own field with one lookup tool backed by a small SQLite table. Add a third tool to the career assistant, <code>suggest_meeting(email, times)</code>, that sends you the request. Then deliberately break a tool (raise an exception) and confirm the loop reports the error and keeps going.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://platform.openai.com/docs/guides/function-calling">Function calling</a> — OpenAI</li>
+  <li><a href="https://platform.openai.com/docs/guides/structured-outputs">Structured outputs</a> — OpenAI</li>
+  <li><a href="https://www.gradio.app/guides/creating-a-chatbot-fast">Creating a chatbot fast</a> — Gradio</li>
+  <li><a href="https://render.com/docs/your-first-deploy">Your first deploy</a> — Render</li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/1_foundations">Week 1 reference implementation</a> — ed-donner/agents (see <code>twin/</code> and the Render notes)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

@@ -1,7 +1,7 @@
 <section class="module" id="m5" data-title="Week 5: RAG" data-wire="var(--w5)" data-group="Applied">
 <div class="wire-band" style="--wire:var(--w5)"></div>
 <header class="mod-head">
-  <p class="mod-num">Week 5 · Module 5 of 9 · <code>week5/</code></p>
+  <p class="mod-num">Week 5 · Module 5 of 9</p>
   <h1>Retrieval-augmented generation, built and measured</h1>
   <p class="lede">Week 5 builds an expert assistant for Insurellm, a fictional insurance-tech company, that answers questions from the company's own documents. You start with a crude keyword lookup, move to embeddings and a vector database, then do the part most tutorials skip: measuring retrieval and answer quality. The week ends with a hand-built "pro" pipeline that uses LLMs to chunk, rewrite queries and rerank.</p>
 </header>
@@ -16,21 +16,20 @@
   </ul>
 </div>
 
-<h2>Notebook map</h2>
-<div class="tbl nbmap"><table>
-<thead><tr><th>File</th><th>What happens</th><th>Look for</th></tr></thead>
-<tbody>
-<tr><td><code>day1.ipynb</code></td><td>Load employee docs into a dictionary and inject the ones whose names appear in the question; a Gradio chat over it</td><td>How far brute-force context injection gets you</td></tr>
-<tr><td><code>day2.ipynb</code></td><td>Load the knowledge base with LangChain, split into chunks, embed, store in Chroma, visualize with t-SNE</td><td>The clusters by document type in the plot</td></tr>
-<tr><td><code>day3.ipynb</code></td><td>A retriever plus an LLM wired together with LangChain into a chat assistant</td><td>How little code a working RAG takes</td></tr>
-<tr><td><code>day4.ipynb</code></td><td>Evaluation: 150 test questions, retrieval metrics and LLM-judged answers</td><td>The note correcting Recall@K versus hit rate</td></tr>
-<tr><td><code>day5.ipynb</code></td><td>"Pro" RAG without LangChain: LLM-made chunks, then query rewriting and reranking</td><td>The <code>Chunk</code> model and the rerank prompt</td></tr>
-<tr><td><code>implementation/</code>, <code>pro_implementation/</code>, <code>evaluation/</code>, <code>app.py</code></td><td>The same pipelines as Python modules, the test set and grader, and a UI</td><td>Code you can reuse in your own project</td></tr>
-</tbody></table></div>
-<p class="cost">Cost: well under a dollar for embeddings and test runs on the small knowledge base; the LLM-chunking step makes one call per document.</p>
+<div class="build" style="--wire:var(--w5)">
+  <h2>Project: an expert assistant for one company</h2>
+  <ol>
+    <li>Assemble a knowledge base of 30–80 Markdown documents in folders by type (company, products, employees, contracts). Use documents you own, or have a model generate a consistent fictional company; the reference course uses one called Insurellm, and its <a href="https://github.com/ed-donner/llm_engineering/tree/main/week5/knowledge-base">sample documents</a> are a good starting set.</li>
+    <li>Build the crude version: if a question mentions a known name, paste that document into the prompt.</li>
+    <li>Chunk, embed and store everything in Chroma; plot the vectors in 2D to check they cluster by type.</li>
+    <li>Wire retrieval and a chat model into a Gradio chat assistant.</li>
+    <li>Write a test set (aim for 50+ questions, with keywords and reference answers), measure retrieval and answers, then add LLM chunking, query rewriting and reranking one at a time and keep only what helps.</li>
+  </ol>
+  <p class="cost">Cost: well under a dollar for embeddings and evaluation on a small knowledge base.</p>
+</div>
 
 <h2>What RAG is</h2>
-<p>A model only knows what it was trained on plus what's in the prompt. RAG adds a step before generation: find the passages most relevant to the question and include them in the prompt, with an instruction to answer from them. Day 1 shows the idea in its rawest form: if a question mentions an employee's name, paste that employee's file into the system prompt. It works for exact names and fails for anything phrased differently, which is the problem embeddings solve.</p>
+<p>A model only knows what it was trained on plus what's in the prompt. RAG adds a step before generation: find the passages most relevant to the question and include them in the prompt, with an instruction to answer from them. The rawest form of the idea: if a question mentions an employee's name, paste that employee's file into the system prompt. It works for exact names and fails for anything phrased differently, which is the problem embeddings solve.</p>
 
 <figure class="diagram">
 <svg viewBox="0 0 680 250" role="img" aria-label="RAG pipeline. Offline: documents are chunked, embedded and stored in a vector database. Online: the question is embedded, similar chunks are retrieved, and the model answers from them.">
@@ -58,10 +57,10 @@
 <h2>Chunks, embeddings and vector stores</h2>
 <ul>
   <li><strong>Chunking</strong> splits documents into passages small enough to be specific and large enough to make sense on their own. The basic implementation uses LangChain's <code>RecursiveCharacterTextSplitter</code> with 500-character chunks overlapping by 200, so a fact that straddles a boundary still lands whole in at least one chunk.</li>
-  <li><strong>An embedding model</strong> turns text into a vector so that passages with similar meaning end up close together. The course uses both OpenAI's <code>text-embedding-3-large</code> and the small, free, local <code>all-MiniLM-L6-v2</code> from Hugging Face.</li>
+  <li><strong>An embedding model</strong> turns text into a vector so that passages with similar meaning end up close together. Good choices include OpenAI's <code>text-embedding-3-large</code> and the small, free, local <code>all-MiniLM-L6-v2</code> from Hugging Face.</li>
   <li><strong>A vector store</strong> (Chroma here) saves the vectors with their text and metadata and finds the nearest ones to a query vector.</li>
 </ul>
-<p>Day 2's t-SNE plot squashes the vectors into two or three dimensions so you can see them. Chunks from the same kind of document (employees, products, contracts, company pages) cluster together, which is a good visual check that the embeddings capture meaning.</p>
+<p>A t-SNE plot squashes the vectors into two or three dimensions so you can see them. Chunks from the same kind of document (employees, products, contracts, company pages) cluster together, which is a good visual check that the embeddings capture meaning.</p>
 
 <figure class="code"><figcaption>RAG in about fifteen lines, without a framework</figcaption>
 <pre><code><span class="k">from</span> chromadb <span class="k">import</span> PersistentClient
@@ -80,10 +79,10 @@ collection = PersistentClient(path=<span class="s">"vector_db"</span>).get_or_cr
     r = client.chat.completions.create(model=MODEL, messages=[
         {<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: system}, {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: question}])
     <span class="k">return</span> r.choices[<span class="s">0</span>].message.content</code></pre></figure>
-<p>Day 3 does the same with LangChain's retriever and chat model objects, which both expose <code>invoke()</code>. The author's comment at the end of that notebook is fair: RAG is less complicated than it's made out to be. Making it <em>good</em> is the hard part, and that requires measuring it.</p>
+<p>LangChain can do the same with its retriever and chat-model objects, which both expose <code>invoke()</code>. Either way, RAG is less complicated than it's often made out to be. Making it <em>good</em> is the hard part, and that requires measuring it.</p>
 
 <h2>Measuring RAG</h2>
-<p>Day 4 brings a test set of 150 questions about Insurellm, each with a reference answer, a category and a few keywords that a relevant chunk should contain. The categories range from direct facts (most of them) to temporal, spanning, comparative, numerical, relationship and holistic questions, so you can see which kinds your pipeline gets wrong.</p>
+<p>Start with a test set. Each test is a question with a reference answer, a category, and a few keywords that a relevant chunk should contain. The reference course's set has 150 questions, mostly direct facts plus temporal, spanning, comparative, numerical, relationship and holistic ones; copying that mix of categories shows you which kinds of question your pipeline gets wrong.</p>
 <h3>Retrieval metrics: did we find the right passages?</h3>
 <div class="tbl"><table>
 <thead><tr><th>Metric</th><th>Question it answers</th><th>In this repo</th></tr></thead>
@@ -94,12 +93,12 @@ collection = PersistentClient(path=<span class="s">"vector_db"</span>).get_or_cr
 <tr><td>Recall@K</td><td>Of all relevant chunks, how many are in the top K?</td><td>See the correction below</td></tr>
 </tbody></table></div>
 <div class="note field"><h4>Recall versus hit rate</h4>
-<p>The repo's most recent commit (November 2026) adds a correction from a student: the slide's definition of Recall@K, the share of tests where relevant context appeared, is really <strong>hit rate</strong>. Recall@K for one test is the number of relevant chunks in the top K divided by all relevant chunks for that test. The two are equal only when each test has exactly one relevant chunk.</p></div>
+<p>These two are often confused. The share of tests where some relevant context appeared is <strong>hit rate</strong>. Recall@K for one test is the number of relevant chunks in the top K divided by all relevant chunks for that test. The two are equal only when each test has exactly one relevant chunk.</p></div>
 <h3>Answer metrics: was the reply right?</h3>
 <p>Answers are graded by an LLM acting as judge, which compares the reply with the reference answer and returns scores for <strong>accuracy</strong>, <strong>completeness</strong> and <strong>relevance</strong>, plus written feedback, as structured output. Look at the feedback, not just the scores; it tells you whether a failure came from retrieval (the fact wasn't in the context) or generation (it was there and the model missed it).</p>
 
 <h2>Going pro</h2>
-<p>Day 5 rebuilds the pipeline natively, without LangChain, for full control, and adds techniques you then evaluate with the same tests.</p>
+<p>Now rebuild the pipeline natively, without a framework, for full control, and add techniques one at a time, evaluating each with the same tests.</p>
 <ul>
   <li><strong>LLM chunking.</strong> Instead of cutting every 500 characters, ask a model to split each document into sensible overlapping chunks, returned as structured output (a Pydantic <code>Chunk</code> model with a headline, a summary and the original text).</li>
   <li><strong>Document pre-processing.</strong> Storing the headline and summary alongside the text gives the embedding more to match against than raw prose.</li>
@@ -141,9 +140,9 @@ collection = PersistentClient(path=<span class="s">"vector_db"</span>).get_or_cr
 <p>Point the pipeline at 20–50 documents you actually use: runbooks, internal how-tos, product manuals. Write 25 test questions with keywords and reference answers, covering at least three categories. Measure the basic pipeline, then add one technique at a time (a different chunk size, query rewriting, reranking) and record the retrieval and answer scores after each. Keep only what helps.</p>
 </section>
 
-<h2>Read the originals</h2>
+<h2>References</h2>
 <ul class="sources">
-  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week5">week5/</a> — notebooks, implementations, test set and grader</li>
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week5">Week 5 reference implementation</a> — includes a sample knowledge base, test set and grader</li>
   <li><a href="https://docs.trychroma.com/">Chroma documentation</a></li>
   <li><a href="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2">all-MiniLM-L6-v2</a> — Hugging Face</li>
   <li><a href="https://platform.openai.com/docs/guides/embeddings">Embeddings guide</a> — OpenAI</li>

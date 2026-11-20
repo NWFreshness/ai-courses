@@ -1,0 +1,268 @@
+
+<section class="module" id="m5" data-title="LangGraph and LangChain" data-wire="var(--w5)" data-group="Weeks 2–5: Frameworks">
+<div class="wire-band" style="--wire:var(--w5)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 4 · Module 5 of 9</p>
+  <h1>LangGraph and LangChain: agents as state machines</h1>
+  <p class="lede">LangGraph treats an agent as a graph: nodes that do work, edges that decide what runs next, and a typed state that flows through it, saved after every step. That buys you things the lighter frameworks don't: pause and resume, replay from any earlier step, and human approval in the middle of a run. LangChain's agent layer and Deep Agents sit on top. You'll use all of it to build a personal co-worker that checks its own work.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w5)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Place LangChain, LangGraph, <code>create_agent</code> and Deep Agents in one picture, and pick the right layer.</li>
+    <li>Build a graph with state, reducers, tool nodes and conditional edges.</li>
+    <li>Persist runs with checkpointers, inspect history, and resume after a human decision.</li>
+    <li>Use middleware, MCP tools and sub-agents, and add an evaluator node with success criteria.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w5)">
+  <h2>Project: Sidekick, a co-worker that checks its own work</h2>
+  <ol>
+    <li>Build a chatbot graph with a search tool and a push-notification tool, using <code>ToolNode</code> and <code>tools_condition</code>, and give it memory with a checkpointer.</li>
+    <li>Rebuild the same agent in a few lines with <code>create_agent</code>, then add middleware that logs tool calls and asks your approval before any notification is sent.</li>
+    <li>Give it a real browser through the Playwright MCP server, and a sandboxed folder for files.</li>
+    <li>Build Sidekick: a worker node plus an evaluator node that checks each answer against success criteria you type, sending it back with feedback until it passes or needs you.</li>
+    <li>Wrap it in a Gradio UI with a box for the request and one for the success criteria.</li>
+  </ol>
+  <p class="cost">Cost: cents per task with a small model; browsing tasks use more tokens because pages are long. LangSmith tracing has a free tier.</p>
+</div>
+
+<h2>Four layers, one family</h2>
+<div class="tbl"><table>
+<thead><tr><th>Layer</th><th>Package</th><th>What it gives you</th><th>Use it when</th></tr></thead>
+<tbody>
+<tr><td>Building blocks</td><td><code>langchain-core</code>, <code>langchain-openai</code></td><td>Chat models, messages, the <code>@tool</code> decorator, structured output</td><td>Always; everything else is built on these</td></tr>
+<tr><td>Graphs</td><td><code>langgraph</code></td><td>State machines with persistence, interrupts and time travel</td><td>You need control over the flow, or durability</td></tr>
+<tr><td>Agents</td><td><code>langchain</code> (<code>create_agent</code>)</td><td>A ready-made tool loop on LangGraph, shaped by middleware</td><td>You want a standard agent quickly</td></tr>
+<tr><td>Deep agents</td><td><code>deepagents</code></td><td>Planning, a filesystem, sub-agents and skills, preassembled</td><td>Long, multi-step tasks such as research and writing</td></tr>
+</tbody></table></div>
+<p>Turn on LangSmith tracing before you start (set <code>LANGSMITH_TRACING=true</code> and <code>LANGSMITH_API_KEY</code> in <code>.env</code>). Every run of every layer then appears there, step by step.</p>
+
+<h2>Building blocks</h2>
+<figure class="code"><figcaption>A model, a tool, and a tool request</figcaption><pre><code class="hl-py">from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+
+@tool
+def get_share_price(symbol: str) -> float:
+    """Return the current share price for a ticker symbol."""
+    return {"AAPL": 241.5, "GOOG": 168.2}.get(symbol.upper(), 0.0)
+
+llm = ChatOpenAI(model="gpt-5.4-mini")
+response = llm.bind_tools([get_share_price]).invoke("What's Apple trading at?")
+print(response.tool_calls)     # [{'name': 'get_share_price', 'args': {'symbol': 'AAPL'}, ...}]</code></pre></figure>
+<p>That's the same request-for-a-tool you handled in Module 2; at this layer you'd still write the loop yourself. LangGraph writes it as a graph.</p>
+
+<h2>Graphs: state, nodes, edges</h2>
+<p>The <strong>state</strong> is a typed dictionary that flows through the graph. Each node is a function that receives the state and returns an update. By default an update replaces a field; a <strong>reducer</strong> says how to combine instead. <code>add_messages</code> appends new messages to the list, which is what a conversation needs.</p>
+<figure class="code"><figcaption>graph_bot.py: a tool-using chatbot as a graph</figcaption><pre><code class="hl-py">from typing import Annotated, TypedDict
+from langgraph.graph import StateGraph, START
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_community.tools import GoogleSerperRun
+from langchain_community.utilities import GoogleSerperAPIWrapper
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+@tool
+def send_push_notification(text: str) -> str:
+    """Send a short push notification to the user's phone."""
+    return push(text)
+
+tools = [GoogleSerperRun(api_wrapper=GoogleSerperAPIWrapper()), send_push_notification]
+llm_with_tools = ChatOpenAI(model="gpt-5.4-mini").bind_tools(tools)
+
+def chatbot(state: State) -> dict:
+    return {"messages": [llm_with_tools.invoke(state["messages"])]}
+
+builder = StateGraph(State)
+builder.add_node("chatbot", chatbot)
+builder.add_node("tools", ToolNode(tools))
+builder.add_edge(START, "chatbot")
+builder.add_conditional_edges("chatbot", tools_condition)   # to "tools" if requested, else end
+builder.add_edge("tools", "chatbot")
+graph = builder.compile(checkpointer=MemorySaver())
+
+config = {"configurable": {"thread_id": "1"}}
+graph.invoke({"messages": [{"role": "user", "content": "Search for today's weather in Lisbon"}]}, config)
+graph.invoke({"messages": [{"role": "user", "content": "Send me that as a notification"}]}, config)</code></pre></figure>
+<p><code>ToolNode</code> runs whatever tools the last message asked for; <code>tools_condition</code> is a ready-made router that goes to the node named <code>"tools"</code> when there are tool calls and ends otherwise. The edge back from tools to chatbot is the loop. <code>graph.get_graph().draw_mermaid()</code> draws it for you.</p>
+
+<h2>Checkpoints: memory, history, time travel</h2>
+<p>A <strong>checkpointer</strong> saves the full state after every step, keyed by <code>thread_id</code>. That one feature gives you conversation memory (the second call above remembers the first), durability, and history. <code>MemorySaver</code> keeps checkpoints in memory; for something that survives restarts, swap in SQLite:</p>
+<figure class="code"><figcaption>Durable threads, and a look back</figcaption><pre><code class="hl-py">from langgraph.checkpoint.sqlite import SqliteSaver
+
+with SqliteSaver.from_conn_string("memory.db") as saver:
+    durable = builder.compile(checkpointer=saver)
+    durable.invoke({"messages": [{"role": "user", "content": "My name is Sam"}]}, config)
+    for snapshot in durable.get_state_history(config):         # newest first
+        print(snapshot.config["configurable"]["checkpoint_id"], len(snapshot.values["messages"]))</code></pre></figure>
+<p>Each snapshot has its own checkpoint ID. Invoke the graph with a config containing an earlier <code>checkpoint_id</code> and it resumes from that point, which is how you replay or branch a run to debug it ("time travel").</p>
+
+<h2>The agent layer: <code>create_agent</code> and middleware</h2>
+<p>Most of the graph above is the same in every tool-using agent, so LangChain packages it. <code>create_agent</code> builds the loop on LangGraph; middleware lets you run your own code before or after model calls, or around each tool call.</p>
+<figure class="code"><figcaption>The same agent, plus logging and an approval step</figcaption><pre><code class="hl-py">from langchain.agents import create_agent
+from langchain.agents.middleware import wrap_tool_call, HumanInTheLoopMiddleware
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command
+
+@wrap_tool_call
+def log_tool_calls(request, handler):
+    print(f"[tool] {request.tool_call['name']} {request.tool_call['args']}")
+    return handler(request)
+
+agent = create_agent(
+    model="openai:gpt-5.4-mini",
+    tools=tools,
+    system_prompt="You are a helpful assistant. Use your tools.",
+    middleware=[log_tool_calls,
+                HumanInTheLoopMiddleware(interrupt_on={"send_push_notification": True})],
+    checkpointer=InMemorySaver(),                 # interrupts need somewhere to save the paused run
+)
+
+config = {"configurable": {"thread_id": "approve-1"}}
+result = agent.invoke({"messages": [{"role": "user", "content": "Notify me that the build passed"}]}, config)
+pending = result["__interrupt__"][0].value["action_requests"][0]
+print("Waiting for approval:", pending["description"])
+
+agent.invoke(Command(resume={"decisions": [{"type": "approve"}]}), config)
+# or: {"type": "reject", "message": "Not now"}, or {"type": "edit", ...} to change the arguments</code></pre></figure>
+<p>The run pauses before the gated tool, saves itself in the checkpointer, and returns an interrupt describing what it wants to do. Your code (or a UI) shows that to a person, and <code>Command(resume=...)</code> continues the same run from exactly where it stopped. Pass a Pydantic model as <code>response_format</code> to get a typed answer in <code>result["structured_response"]</code>.</p>
+<p>LangChain ships ready-made middleware for common needs: <code>SummarizationMiddleware</code> to keep long conversations inside the context window, <code>PIIMiddleware</code> to redact emails or card numbers, <code>ModelCallLimitMiddleware</code> to cap a run, <code>TodoListMiddleware</code> to give the agent a plan it keeps updated, and retry middleware for flaky calls.</p>
+
+<h2>Tools from MCP servers</h2>
+<p>The <code>langchain-mcp-adapters</code> package turns any MCP server's tools into LangChain tools. Module 7 explains MCP properly; for now, it's how Sidekick gets a real browser.</p>
+<figure class="code"><figcaption>A browser in four lines</figcaption><pre><code class="hl-py">from langchain_mcp_adapters.client import MultiServerMCPClient
+
+client = MultiServerMCPClient({"playwright": {
+    "transport": "stdio", "command": "npx", "args": ["-y", "@playwright/mcp@latest", "--isolated"]}})
+browser_tools = await client.get_tools()          # navigate, click, type, snapshot, ...
+browser_agent = create_agent(model="openai:gpt-5.4-mini", tools=browser_tools,
+                             system_prompt="Use the browser to complete the task, then report clearly.")</code></pre></figure>
+
+<h2>Deep Agents</h2>
+<p>Long tasks need more than a loop: a plan, somewhere to put intermediate work, and a way to hand pieces to helpers without flooding the main context. <code>create_deep_agent</code> preassembles those: a to-do tool, file tools on a backend you choose, and sub-agents it can delegate to.</p>
+<figure class="code"><figcaption>A research lead with a sub-agent, writing to a sandboxed folder</figcaption><pre><code class="hl-py">import os
+from deepagents import create_deep_agent
+from deepagents.backends import FilesystemBackend
+
+sandbox = os.path.abspath("sandbox"); os.makedirs(sandbox, exist_ok=True)
+researcher = {
+    "name": "vehicle-researcher",
+    "description": "Researches one electric vehicle and returns three facts a fleet buyer would care about.",
+    "system_prompt": "Research the vehicle with the search tool. Return three concise facts: price, range, charging.",
+}
+lead = create_deep_agent(
+    model=ChatOpenAI(model="gpt-5.4-mini"),
+    tools=[GoogleSerperRun(api_wrapper=GoogleSerperAPIWrapper())],
+    system_prompt="You write vehicle comparison briefings. Delegate each vehicle to your vehicle-researcher, "
+                  "then write a markdown comparison to a file, ending with a recommendation.",
+    subagents=[researcher],
+    backend=FilesystemBackend(root_dir=sandbox, virtual_mode=True),   # paths can't escape the sandbox
+)
+lead.invoke({"messages": [{"role": "user", "content": "Compare three electric vans for a delivery fleet"}]})</code></pre></figure>
+<p>Each sub-agent works in its own context and returns only its result, so the lead's context stays small. Deep agents can also load <strong>skills</strong>: folders with a <code>SKILL.md</code> of instructions (and any helper files) that the agent reads only when a task calls for them.</p>
+
+<h2>Sidekick: a worker and an evaluator</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 220" role="img" aria-label="The Sidekick graph. Start goes to the worker. The worker loops with its tools. When it stops calling tools, the evaluator checks its answer against the success criteria. If the criteria are met, or the user's input is needed, the graph ends; otherwise the evaluator's feedback goes back to the worker.">
+  <defs><marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+  <circle cx="40" cy="110" r="16" class="box"/><text x="40" y="114" text-anchor="middle" style="font-size:10px">start</text>
+  <rect x="110" y="84" width="130" height="52" rx="6" fill="color-mix(in srgb,var(--w5) 18%,var(--paper))" stroke="var(--w5)" stroke-width="2"/><text x="175" y="107" text-anchor="middle" style="font-size:13px;font-weight:600">worker</text><text x="175" y="124" text-anchor="middle" class="muted" style="font-size:11px">model + tools</text>
+  <rect x="110" y="168" width="130" height="40" rx="6" class="box"/><text x="175" y="192" text-anchor="middle" style="font-size:12px">tools: browser, files, search…</text>
+  <rect x="330" y="84" width="140" height="52" rx="6" fill="color-mix(in srgb,var(--w2) 18%,var(--paper))" stroke="var(--w2)" stroke-width="2"/><text x="400" y="107" text-anchor="middle" style="font-size:13px;font-weight:600">evaluator</text><text x="400" y="124" text-anchor="middle" class="muted" style="font-size:11px">criteria met?</text>
+  <circle cx="610" cy="110" r="18" class="box"/><text x="610" y="114" text-anchor="middle" style="font-size:10px">end</text>
+  <path d="M56 110 H110" class="ln" marker-end="url(#a5)"/><path d="M240 110 H330" class="ln" marker-end="url(#a5)"/><path d="M470 110 H592" class="ln" marker-end="url(#a5)"/>
+  <path d="M160 136 V168" class="ln" marker-end="url(#a5)"/><path d="M190 168 V136" class="ln" marker-end="url(#a5)"/>
+  <path d="M400 84 C400 30 175 30 175 84" class="ln" marker-end="url(#a5)"/>
+  <text x="290" y="40" text-anchor="middle" class="muted" style="font-size:11px">not yet: feedback goes back to the worker</text>
+  <text x="531" y="100" text-anchor="middle" class="muted" style="font-size:11px">met, or needs you</text>
+  <text x="285" y="102" text-anchor="middle" class="muted" style="font-size:11px">answer</text>
+  <path id="p5a" d="M40 110 H400 C400 30 175 30 175 84 V110 H610" fill="none"/>
+  <g class="live"><circle r="5" fill="var(--w5)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="5s" repeatCount="indefinite"><mpath href="#p5a"/></animateMotion></circle></g>
+</svg>
+<figcaption>An evaluator-optimizer loop built into the graph. The evaluator returns structured output, so routing is a plain <code>if</code>.</figcaption>
+</figure>
+<figure class="code"><figcaption>sidekick.py (core)</figcaption><pre><code class="hl-py">from typing import Annotated, TypedDict
+from pydantic import BaseModel, Field
+from langchain_core.messages import SystemMessage, HumanMessage
+from langgraph.graph import StateGraph, START, END
+
+class Verdict(BaseModel):
+    feedback: str = Field(description="What's missing or wrong, if anything")
+    success_criteria_met: bool
+    user_input_needed: bool = Field(description="True if the assistant asked a question or is stuck")
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+    success_criteria: str
+    feedback: str | None
+    done: bool
+    needs_user: bool
+
+worker_llm = ChatOpenAI(model="gpt-5.4-mini").bind_tools(all_tools)
+judge = ChatOpenAI(model="gpt-5.4-mini").with_structured_output(Verdict)
+
+def worker(state: State) -> dict:
+    system = ("You are a capable assistant that uses tools to complete tasks. Keep working until the "
+              f"success criteria are met, or ask the user a clear question.\nSuccess criteria: {state['success_criteria']}")
+    if state.get("feedback"):
+        system += f"\nYour previous answer was rejected. Feedback: {state['feedback']}"
+    return {"messages": [worker_llm.invoke([SystemMessage(system)] + state["messages"])]}
+
+def evaluator(state: State) -> dict:
+    answer = state["messages"][-1].content
+    v = judge.invoke([SystemMessage("You decide whether an assistant's answer meets the success criteria."),
+                      HumanMessage(f"Criteria: {state['success_criteria']}\n\nAnswer:\n{answer}")])
+    return {"feedback": v.feedback, "done": v.success_criteria_met, "needs_user": v.user_input_needed}
+
+builder = StateGraph(State)
+builder.add_node("worker", worker)
+builder.add_node("tools", ToolNode(all_tools))
+builder.add_node("evaluator", evaluator)
+builder.add_edge(START, "worker")
+builder.add_conditional_edges("worker", tools_condition, {"tools": "tools", END: "evaluator"})
+builder.add_edge("tools", "worker")
+builder.add_conditional_edges("evaluator", lambda s: END if s["done"] or s["needs_user"] else "worker")
+sidekick = builder.compile(checkpointer=MemorySaver())</code></pre></figure>
+<p>For <code>all_tools</code>, combine the browser tools, a search tool, your push tool, Python's REPL if you're brave, and file tools scoped to a sandbox folder (<code>FileManagementToolkit(root_dir="sandbox").get_tools()</code> from <code>langchain_community</code>). In the UI, give the user two boxes, the request and the success criteria, and show the evaluator's feedback in the chat so they can see why the worker went round again.</p>
+
+<div class="note pitfall"><h4>Async tools in a sync graph</h4>
+<p>MCP tools from <code>MultiServerMCPClient</code> are async-only. If any node uses them, run the graph with <code>await graph.ainvoke(...)</code>, and make your nodes <code>async def</code> with <code>await llm.ainvoke(...)</code>. Mixing sync <code>invoke</code> with async tools raises an error about calling an async tool synchronously.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>LangGraph models an agent as typed state, nodes and edges; reducers such as <code>add_messages</code> say how updates combine.</li>
+  <li>Checkpointers save every step by thread: memory, durability, history and time travel come from that one feature.</li>
+  <li><code>create_agent</code> is the standard loop; middleware adds logging, limits, redaction and human approval with resumable interrupts.</li>
+  <li>Deep Agents add planning, files and sub-agents; an evaluator node turns success criteria into a loop that checks itself.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">Without the <code>add_messages</code> reducer on <code>messages</code>, what would each node's update do?</p>
+<ol><li><button>Append to the list as normal</button></li><li><button>Replace the whole list with just the node's new messages</button></li><li><button>Raise an error</button></li><li><button>Merge by message ID</button></li></ol>
+<p class="q-why">Without a reducer, a returned value replaces the field. <code>add_messages</code> appends (and updates by ID).</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">Why does <code>HumanInTheLoopMiddleware</code> need a checkpointer?</p>
+<ol><li><button>To log approvals to LangSmith</button></li><li><button>To store the tool's result</button></li><li><button>It doesn't; it's optional</button></li><li><button>The paused run must be saved so it can resume from the same point after the decision</button></li></ol>
+<p class="q-why">An interrupt ends the current call. Resuming with <code>Command(resume=...)</code> reloads the saved state for that thread.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">In Sidekick, when does the graph end without the criteria being met?</p>
+<ol><li><button>When the evaluator says the user's input is needed</button></li><li><button>When the worker uses a tool</button></li><li><button>Never</button></li><li><button>After exactly two loops</button></li></ol>
+<p class="q-why">The router ends on success or when the worker needs the user. In practice you'd also add a cap on loops, for example with <code>ModelCallLimitMiddleware</code> or a counter in the state.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w5)"><h2>Exercise: a loop limit and a replay</h2>
+<p>Add an <code>attempts</code> field to Sidekick's state, increment it in the evaluator, and end after three failed attempts with a message explaining what's still missing. Then run a task that fails once, use <code>get_state_history</code> to find the checkpoint just before the evaluator rejected it, and resume from there with different success criteria.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.langchain.com/oss/python/langgraph/overview">LangGraph overview</a> — LangChain docs</li>
+  <li><a href="https://docs.langchain.com/oss/python/langchain/agents">Agents (create_agent)</a> and <a href="https://docs.langchain.com/oss/python/langchain/middleware">middleware</a> — LangChain docs</li>
+  <li><a href="https://docs.langchain.com/oss/python/deepagents/overview">Deep Agents</a> — LangChain docs</li>
+  <li><a href="https://github.com/langchain-ai/langchain-mcp-adapters">langchain-mcp-adapters</a></li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/4_langchain_langgraph">Week 4 reference implementation</a> — ed-donner/agents (see <code>sidekick.py</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

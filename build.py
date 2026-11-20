@@ -59,7 +59,21 @@ def hero_tokens(cfg):
             f'<p class="ts-out"><span class="ts-role">completion</span>{"".join(chips)}<span class="caret" aria-hidden="true"></span></p></div>')
 
 
-HEROES = {"loom": hero_loom, "tokens": hero_tokens}
+def hero_trace(cfg):
+    """Agentic AI: the course as one agent run, shown in a trace viewer. Each module is a span."""
+    root = htmlmod.escape(cfg["hero_prompt"])
+    rows = [f'<div class="tr-row tr-root"><span class="tr-kind">run</span><span class="tr-name"><code>{root}</code></span>'
+            f'<span class="tr-lane"><i class="tr-bar" style="--s:0;--l:100;--i:0"></i></span></div>']
+    for i, (mid, kind, label, color, start, length) in enumerate(cfg["hero_modules"]):
+        rows.append(f'<a class="tr-row" href="#{mid}" data-mod="{mid}" style="--tc:{color}">'
+                    f'<span class="tr-kind">{kind}</span><span class="tr-name">{htmlmod.escape(label)}'
+                    f'<i class="done" aria-hidden="true"> ✓</i></span>'
+                    f'<span class="tr-lane"><i class="tr-bar" style="--s:{start};--l:{length};--i:{i + 1}"></i></span></a>')
+    return ('<div class="trace" aria-label="Course map as an agent trace: select a span to open that module.">'
+            '<p class="tr-head"><span>Trace</span><span>one span per module</span></p>' + "".join(rows) + '</div>')
+
+
+HEROES = {"loom": hero_loom, "tokens": hero_tokens, "trace": hero_trace}
 
 
 # ---------------------------------------------------------------- charts
@@ -84,6 +98,98 @@ def leaderboard(cfg, stage):
                    f'<text x="{x0 + w + 8:.1f}" y="{y+18}" style="font-size:14px;font-variant-numeric:tabular-nums">${r["error"]:.2f}</text></g>')
     out.append('</svg>')
     return "\n".join(out)
+
+
+# ---------------------------------------------------------------- code highlighting
+# Modules can hold plain code in <code class="hl-py">, "hl-sh" or "hl-yaml"; the build colors it.
+# The other courses carry hand-highlighted spans, which pass through untouched.
+import io, keyword, tokenize
+
+PY_KW = set(keyword.kwlist) | {"match", "case", "self"}
+
+
+def _wrap(cls, text):
+    return f'<span class="{cls}">{htmlmod.escape(text, quote=False)}</span>'
+
+
+def hl_python(src):
+    lines = src.splitlines(keepends=True)
+    starts = [0]
+    for ln in lines:
+        starts.append(starts[-1] + len(ln))
+    off = lambda rc: starts[rc[0] - 1] + rc[1]
+    out, pos, prev, fdepth, fstart = [], 0, None, 0, None
+    try:
+        toks = list(tokenize.generate_tokens(io.StringIO(src).readline))
+    except (tokenize.TokenError, SyntaxError):
+        return htmlmod.escape(src, quote=False)
+    FS, FE = getattr(tokenize, "FSTRING_START", -1), getattr(tokenize, "FSTRING_END", -2)
+    for t in toks:
+        a, b = off(t.start), off(t.end)
+        if fdepth:                       # inside an f-string: color it whole at its end
+            if t.type == FS:
+                fdepth += 1
+            elif t.type == FE:
+                fdepth -= 1
+                if not fdepth:
+                    out.append(_wrap("s", src[fstart:b])); pos = b
+            continue
+        if a > pos:
+            out.append(htmlmod.escape(src[pos:a], quote=False))
+        text = src[a:b]
+        if t.type == FS:
+            fdepth, fstart = 1, a
+            continue
+        if t.type == tokenize.STRING:
+            out.append(_wrap("s", text))
+        elif t.type == tokenize.COMMENT:
+            out.append(_wrap("c", text))
+        elif t.type == tokenize.NAME and text in PY_KW:
+            out.append(_wrap("k", text))
+        elif t.type == tokenize.NAME and prev and prev.string in ("def", "class", "@"):
+            out.append(_wrap("f", text))
+        elif t.type == tokenize.NUMBER:
+            out.append(_wrap("s", text))
+        else:
+            out.append(htmlmod.escape(text, quote=False))
+        pos = max(pos, b)
+        if t.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT):
+            prev = t
+    out.append(htmlmod.escape(src[pos:], quote=False))
+    return "".join(out)
+
+
+def hl_sh(src):
+    out = []
+    for line in src.splitlines(keepends=True):
+        code, hash_, comment = line.partition(" #") if not line.lstrip().startswith("#") else ("", "", line)
+        esc = htmlmod.escape(code, quote=False)
+        esc = re.sub(r"(&quot;|\"|')(.*?)\1", lambda m: _wrap("s", htmlmod.unescape(m.group(0))), esc)
+        out.append(esc + (_wrap("c", (" #" if hash_ else "") + comment.rstrip("\n")) + ("\n" if line.endswith("\n") else "") if comment else ""))
+    return "".join(out)
+
+
+def hl_yaml(src):
+    out = []
+    for line in src.splitlines(keepends=True):
+        m = re.match(r"(\s*)([\w-]+)(:)(.*)", line, re.S)
+        if line.lstrip().startswith("#"):
+            out.append(_wrap("c", line.rstrip("\n")) + ("\n" if line.endswith("\n") else ""))
+        elif m:
+            out.append(m.group(1) + _wrap("k", m.group(2)) + m.group(3) + htmlmod.escape(m.group(4), quote=False))
+        else:
+            out.append(htmlmod.escape(line, quote=False))
+    return "".join(out)
+
+
+HL = {"py": hl_python, "sh": hl_sh, "yaml": hl_yaml}
+
+
+def highlight(page):
+    def one(m):
+        lang, body = m.group(1), htmlmod.unescape(m.group(2))
+        return "<code>" + HL[lang](body.strip("\n")) + "</code>"
+    return re.sub(r'<code class="hl-(py|sh|yaml)">(.*?)</code>', one, page, flags=re.S)
 
 
 # ---------------------------------------------------------------- page assembly
@@ -113,7 +219,7 @@ def build_course(folder):
                  "{{SUBTITLE}}": cfg["subtitle"], "{{COURSE_CSS}}": css,
                  "{{COURSE_JSON}}": json.dumps(public)}.items():
         head = head.replace(k, v)
-    page = head + body + (ENGINE / "tail.html").read_text()
+    page = highlight(head + body + (ENGINE / "tail.html").read_text())
 
     # static navigation from the sections themselves
     secs = re.findall(r'<section class="module" id="([^"]+)" data-title="([^"]+)" data-wire="([^"]+)"([^>]*)>', page)
@@ -168,7 +274,7 @@ def build_hub(courses):
 
 if __name__ == "__main__":
     folders = sorted(p for p in (ROOT / "courses").iterdir() if (p / "course.json").exists())
-    order = {"harness-engineering": 1, "llm-engineering": 0}
+    order = {"llm-engineering": 0, "agents": 1, "harness-engineering": 2}
     folders.sort(key=lambda p: order.get(p.name, 9))
     print("Building courses:")
     built = [build_course(f) for f in folders]

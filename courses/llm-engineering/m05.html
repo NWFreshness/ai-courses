@@ -1,7 +1,7 @@
 <section class="module" id="m4" data-title="Week 4: Choosing models" data-wire="var(--w4)" data-group="Foundations">
 <div class="wire-band" style="--wire:var(--w4)"></div>
 <header class="mod-head">
-  <p class="mod-num">Week 4 · Module 4 of 9 · <code>week4/</code></p>
+  <p class="mod-num">Week 4 · Module 4 of 9</p>
   <h1>Choosing the right model: a code-generation race</h1>
   <p class="lede">How do you pick a model when there are hundreds? Week 4's answer is to stop reading marketing and test models on your own task with a measurable outcome. The task: convert Python into fast C++ or Rust, compile it, run it, check the output matches, and time it.</p>
 </header>
@@ -16,16 +16,17 @@
   </ul>
 </div>
 
-<h2>Notebook map</h2>
-<p>The week starts with lecture days on model selection; the labs begin at Day 3.</p>
-<div class="tbl nbmap"><table>
-<thead><tr><th>File</th><th>What happens</th><th>Look for</th></tr></thead>
-<tbody>
-<tr><td><code>day3.ipynb</code></td><td>Ask a model for the right compiler commands for your machine (via <code>system_info.py</code>), then port a π-approximation from Python to C++ with several frontier models and compare speedups</td><td>The system prompt that demands identical output and only code</td></tr>
-<tr><td><code>day4.ipynb</code></td><td>Wrap the converter in a Gradio app; try open-source coder models alongside frontier ones</td><td>Which models fail to produce code that compiles</td></tr>
-<tr><td><code>day5.ipynb</code></td><td>Add Rust as a target and a harder benchmark program; race a longer list of models</td><td>How results change when the problem gets harder</td></tr>
-</tbody></table></div>
-<p class="cost">Cost: cents to a dollar, depending on how many frontier models you race with high reasoning effort. Running the C++ or Rust is optional; reading the results works too.</p>
+<div class="build" style="--wire:var(--w4)">
+  <h2>Project: the Python-to-C++ race</h2>
+  <ol>
+    <li>Write two Python benchmark programs that print a result and their run time: an easy one (a numeric series, such as approximating π with a loop) and a harder one (for example, a maximum-subarray search over numbers from a seeded pseudo-random generator).</li>
+    <li>Ask one model for the exact compile and run commands for your machine, giving it your OS, CPU and installed compilers.</li>
+    <li>Write <code>port(model, python)</code> that asks for C++ only, then write the reply to <code>main.cpp</code>.</li>
+    <li>Compile and run it in a sandbox (a container with no network), check the output matches Python's, and record the speedup.</li>
+    <li>Race at least four models, including one open-weights model, on both programs. Put the converter behind a Gradio UI with a model dropdown.</li>
+  </ol>
+  <p class="cost">Cost: cents to a dollar, depending on how many frontier models you race with high reasoning effort.</p>
+</div>
 
 <h2>Narrowing the field</h2>
 <p>Before benchmarking, rule models in or out on the basics:</p>
@@ -59,7 +60,7 @@
 </figure>
 
 <h2>Prompting for code that compiles</h2>
-<p>The system prompt in the notebooks is strict for good reasons. It asks for <em>only</em> code (so the reply can be written straight to a file), output identical to the Python version, and attention to details that commonly break ports, such as integer overflow. The user prompt includes the Python source, and on Day 3 a separate first call asks the model for the right compile and run commands for your specific machine, generated from a report of your OS, CPU and compilers.</p>
+<p>Make the system prompt strict, for good reasons. Ask for <em>only</em> code (so the reply can be written straight to a file), output identical to the Python version, and attention to details that commonly break ports, such as integer overflow. The user prompt carries the Python source. A separate first call, given a report of your OS, CPU and compilers, can tell you the right compile and run commands for your machine.</p>
 <figure class="code"><figcaption>The porting step</figcaption>
 <pre><code>SYSTEM = (<span class="s">"Convert Python into high-performance C++. Respond only with C++ code, no explanation. "</span>
           <span class="s">"The program must print exactly the same output as the Python, and run as fast as possible. "</span>
@@ -71,16 +72,16 @@
         {<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Port this program:\n\n"</span> + python}])
     code = r.choices[<span class="s">0</span>].message.content
     <span class="k">return</span> code.replace(<span class="s">"```cpp"</span>, <span class="s">""</span>).replace(<span class="s">"```"</span>, <span class="s">""</span>)   <span class="c"># models add fences anyway</span></code></pre></figure>
-<p>Then compile with optimization flags, run, and compare. The notebooks print each model's speedup over Python, which run into the hundreds or thousands of times faster for the frontier models. On the harder Day 5 problem, the author's notes report the open-weights GPT-OSS 120B producing a program about 110,000 times faster than the Python; on Day 4, a small local coder model (Qwen 2.5 Coder) failed outright. Your numbers will differ by machine and model version, which is the point: run it yourself.</p>
+<p>Then compile with optimization flags, run, and compare. For the frontier models, speedups over Python typically run into the hundreds or thousands. In the reference course's published runs, the open-weights GPT-OSS 120B produced a program about 110,000 times faster than the Python on the harder problem, while a small local coder model (Qwen 2.5 Coder) failed outright. Your numbers will differ by machine and model version, which is the point: run it yourself.</p>
 
 <div class="note pitfall"><h4>You are running code a model wrote</h4>
-<p>These labs <code>exec()</code> Python and compile and run generated C++ directly on your computer. For a known toy program that's acceptable. For anything else it isn't: generated code can delete files, hang, or exhaust memory, and if the input came from someone else, it can be steered to do so. Run generated code in a container or a VM with no network and no access to your files, with a timeout. <a href="../harness-engineering/#m8">Harness Engineering Module 8</a> covers how.</p></div>
+<p>The quick way to run this project is to <code>exec()</code> Python and compile and run generated C++ directly on your computer. For a known toy program that's tolerable. For anything else it isn't: generated code can delete files, hang, or exhaust memory, and if the input came from someone else, it can be steered to do so. Run generated code in a container or a VM with no network and no access to your files, with a timeout. <a href="../harness-engineering/#m8">Harness Engineering Module 8</a> covers how.</p></div>
 
 <h2>What to take from the results</h2>
 <ul>
   <li><strong>Correctness before speed.</strong> A fast program with different output scores zero.</li>
   <li><strong>Harder problems separate models.</strong> On the easy benchmark most frontier models do well; the harder one reorders the field.</li>
-  <li><strong>Reasoning effort matters for code.</strong> The notebooks turn it up for models that support it.</li>
+  <li><strong>Reasoning effort matters for code.</strong> Turn it up for models that support it.</li>
   <li><strong>Open models are viable for some jobs.</strong> Some open-weights models compete with closed ones on this task; small local ones often don't.</li>
 </ul>
 
@@ -107,9 +108,9 @@
 <p>Pick a task you'd actually use a model for, with a checkable answer: converting a config format, writing a regex that must match a list of examples, or writing a SQL query that must return known rows. Write ten test cases, run three models (one frontier, one cheap, one local), and record pass rate, cost and time in a table. Keep the table; you'll extend this idea with proper evals later.</p>
 </section>
 
-<h2>Read the originals</h2>
+<h2>References</h2>
 <ul class="sources">
-  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week4">week4/</a> — the notebooks</li>
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week4">Week 4 reference implementation</a> — ed-donner/llm_engineering</li>
   <li><a href="https://lmarena.ai/">LMArena</a> — crowd-sourced model comparisons</li>
   <li><a href="https://artificialanalysis.ai/">Artificial Analysis</a> — price, speed and benchmark comparisons</li>
 </ul>

@@ -1,43 +1,54 @@
-<section class="module" id="m0" data-title="Set up the workshop" data-wire="var(--w0s)" data-group="Before you start">
+<section class="module" id="m0" data-title="Set up your workshop" data-wire="var(--w0s)" data-group="Before you start">
 <div class="wire-band" style="--wire:var(--w0s)"></div>
 <header class="mod-head">
   <p class="mod-num">Module 0 · before Week 1 · 1–2 hours</p>
-  <h1>Set up the workshop</h1>
-  <p class="lede">Most early frustration with this course is environment trouble, not AI. An hour spent getting the repo, the Python environment, your keys and a local model working means every later notebook just runs.</p>
+  <h1>Set up your workshop</h1>
+  <p class="lede">Most early frustration with LLM projects is environment trouble, not AI. An hour spent on a clean project, a reproducible Python environment, safely stored keys and a local model means every later week just runs.</p>
 </header>
 
 <div class="objectives" style="--wire:var(--w0s)">
   <h2>By the end of this module you can</h2>
   <ul>
-    <li>Clone the repo, install its environment with uv, and open notebooks on the right kernel.</li>
-    <li>Store API keys safely in a <code>.env</code> file, or skip paid keys entirely with Ollama.</li>
-    <li>Diagnose the handful of problems that cause most setup failures.</li>
-    <li>Know what the course will cost you and how to keep it near zero.</li>
+    <li>Create a Python project with uv and run notebooks and scripts in it.</li>
+    <li>Store API keys in a <code>.env</code> file, or avoid paid keys entirely with Ollama.</li>
+    <li>Diagnose the handful of problems behind most setup failures.</li>
+    <li>Estimate what the course will cost and keep it near zero.</li>
   </ul>
+</div>
+
+<div class="build" style="--wire:var(--w0s)">
+  <h2>Project: a working workshop</h2>
+  <ol>
+    <li>Install git, an editor with Jupyter support (VS Code or Cursor, with the Python and Jupyter extensions), <a href="https://docs.astral.sh/uv/getting-started/installation/">uv</a> and <a href="https://ollama.com">Ollama</a>.</li>
+    <li>Create the project and its environment (commands below).</li>
+    <li>Create a <code>.env</code> file with the keys you'll use, and a <code>.gitignore</code> that lists it.</li>
+    <li>Pull a small local model and make one test call to it, and one to a frontier API if you have a key.</li>
+    <li>Set a monthly spending limit on every paid account.</li>
+  </ol>
+  <p class="cost">Cost: free. Paid API keys are optional throughout.</p>
 </div>
 
 <h2>The moving parts</h2>
 <div class="tbl"><table>
-<thead><tr><th>Piece</th><th>What it's for</th><th>Notes</th></tr></thead>
+<thead><tr><th>Piece</th><th>What it's for</th></tr></thead>
 <tbody>
-<tr><td>git</td><td>Clone the repo and pull updates</td><td>The author updates the labs often; pull at the start of each week</td></tr>
-<tr><td>Cursor (or VS Code)</td><td>Editor with Jupyter support</td><td>Needs the Python and Jupyter extensions</td></tr>
-<tr><td>uv</td><td>Installs the exact Python (3.12) and packages from <code>pyproject.toml</code> and <code>uv.lock</code></td><td><code>uv sync</code> once; <code>uv add</code> instead of <code>pip install</code>; <code>uv run</code> instead of <code>python</code></td></tr>
-<tr><td><code>.env</code></td><td>Holds API keys, loaded by <code>python-dotenv</code></td><td>Lives in the project root; git ignores it</td></tr>
-<tr><td>Ollama</td><td>Runs open models locally behind an OpenAI-compatible endpoint</td><td>Free; the fallback for every paid API in the course</td></tr>
-<tr><td>Google Colab</td><td>Rented GPUs for Weeks 3 and 7</td><td>The free tier or a small spend is enough</td></tr>
-<tr><td>Hugging Face, Modal, Pushover accounts</td><td>Models and datasets; serverless GPU deployment; phone notifications</td><td>Needed from Weeks 3 and 8; all have free tiers</td></tr>
+<tr><td>uv</td><td>Installs a pinned Python and your packages into a project-local <code>.venv</code>, and locks versions so the project is reproducible</td></tr>
+<tr><td>Editor + Jupyter</td><td>Notebooks for experiments; plain <code>.py</code> modules once code settles</td></tr>
+<tr><td><code>.env</code></td><td>Holds API keys, loaded with <code>python-dotenv</code>; never committed</td></tr>
+<tr><td>Ollama</td><td>Runs open models locally behind an OpenAI-compatible endpoint: the free fallback for every paid API call</td></tr>
+<tr><td>Google Colab</td><td>Rented GPUs for Weeks 3 and 7; the free tier or a small spend is enough</td></tr>
+<tr><td>Hugging Face, Modal, Pushover</td><td>Models and datasets (from Week 3); serverless GPUs and phone notifications (Week 8). All have free tiers</td></tr>
 </tbody></table></div>
 
-<h2>Step by step</h2>
-<p>Follow <code>setup/SETUP-new.md</code> in the repo; it has separate PC and Mac/Linux paths. The short version:</p>
-<figure class="code"><figcaption>Terminal, from your projects folder</figcaption>
-<pre><code>git clone https://github.com/ed-donner/llm_engineering.git
-cd llm_engineering
-uv self update        <span class="c"># after installing uv with the standalone installer</span>
-uv sync               <span class="c"># creates .venv with Python 3.12 and every dependency</span>
-ollama pull llama3.2  <span class="c"># or llama3.2:1b on a smaller machine</span></code></pre></figure>
-<p>Then open the folder in Cursor, open <code>week1/day1.ipynb</code>, click <strong>Select Kernel</strong> and choose the <code>.venv</code> Python 3.12 environment. You have to pick the kernel once per notebook.</p>
+<h2>Create the project</h2>
+<figure class="code"><figcaption>Terminal</figcaption>
+<pre><code>mkdir llm-course &amp;&amp; cd llm-course
+uv init --python 3.12
+uv add openai anthropic python-dotenv requests beautifulsoup4 tiktoken gradio ipykernel
+uv add litellm chromadb sentence-transformers langchain langchain-openai langchain-chroma scikit-learn pandas plotly
+ollama pull llama3.2           <span class="c"># or llama3.2:1b on a smaller machine</span>
+printf '.env\n.venv/\n__pycache__/\n' &gt;&gt; .gitignore</code></pre></figure>
+<p>Open the folder in your editor, create a notebook, and choose the <code>.venv</code> interpreter as its kernel. With uv you never activate the environment by hand: <code>uv add</code> replaces <code>pip install</code>, and <code>uv run script.py</code> replaces <code>python script.py</code>. Later weeks add a few packages (for example <code>xgboost</code>, <code>modal</code>, <code>feedparser</code>); add them when you need them.</p>
 
 <h3>The .env file</h3>
 <figure class="code"><figcaption>.env in the project root (only the keys you use)</figcaption>
@@ -46,67 +57,61 @@ ANTHROPIC_API_KEY=sk-ant-...
 GOOGLE_API_KEY=AIza...
 OPENROUTER_API_KEY=sk-or-...
 HF_TOKEN=hf_...</code></pre></figure>
-<p>Every notebook starts with <code>load_dotenv(override=True)</code>, which reads this file into environment variables, and then the client libraries pick up their keys automatically. Three details trip people up constantly, according to the setup guide: the file must be named exactly <code>.env</code> (not <code>.env.txt</code>), there's no space around the equals sign, and you have to actually save it.</p>
+<p>Start every notebook or script with <code>from dotenv import load_dotenv; load_dotenv(override=True)</code>. That reads the file into environment variables, and the client libraries pick up their keys automatically. Three details cause most "key not found" errors: the file must be named exactly <code>.env</code> (not <code>.env.txt</code>), there's no space around the equals sign, and the file has to be saved.</p>
 
 <div class="note principle"><h4>Why keys live in .env and not in code</h4>
-<p>Notebooks get shared, pushed and pasted. A key in a cell ends up on GitHub sooner or later. The <code>.env</code> file is listed in <code>.gitignore</code>, so it stays on your machine. Treat it like a password file, and set a monthly limit and auto-recharge off on any paid account.</p></div>
+<p>Notebooks get shared, pushed and pasted. A key typed into a cell ends up on GitHub sooner or later. A <code>.env</code> file listed in <code>.gitignore</code> stays on your machine. Treat it like a password file, turn auto-recharge off, and set a monthly limit on every paid account.</p></div>
+
+<h2>A first test</h2>
+<figure class="code"><figcaption>test.py: one local call, one frontier call</figcaption>
+<pre><code><span class="k">from</span> dotenv <span class="k">import</span> load_dotenv
+<span class="k">from</span> openai <span class="k">import</span> OpenAI
+load_dotenv(override=<span class="k">True</span>)
+
+ollama = OpenAI(base_url=<span class="s">"http://localhost:11434/v1"</span>, api_key=<span class="s">"ollama"</span>)
+r = ollama.chat.completions.create(model=<span class="s">"llama3.2"</span>, messages=[{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Say hello in five words."</span>}])
+print(<span class="s">"local:"</span>, r.choices[<span class="s">0</span>].message.content)
+
+r = OpenAI().chat.completions.create(model=CHEAP_MODEL, messages=[{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Say hello in five words."</span>}])
+print(<span class="s">"frontier:"</span>, r.choices[<span class="s">0</span>].message.content)    <span class="c"># skip this part if you have no key</span></code></pre></figure>
+<p>Set <code>CHEAP_MODEL</code> to the smallest current model from your provider. Run it with <code>uv run test.py</code>.</p>
 
 <h2>What it costs</h2>
-<p>The author's guidance in the README is that you shouldn't need to spend more than a couple of dollars on API calls for the whole course, using the cheapest models from each provider, and that paid APIs are optional: Ollama, Gemini's free tier and OpenRouter are covered as alternatives in Guide 9 of the <code>guides</code> folder. Weeks 3 and 7 use Colab GPUs, where the free tier or minimal spend is enough. A few steps are optional and cost more if you choose the large version: preprocessing the full 800,000-item dataset in Week 6 cost the author under $30 with Groq (the lite version is under $1, or free if you load his preprocessed copy), and the author spent about $10 on the full Week 7 training run.</p>
+<p>The reference course reports that the whole eight weeks need no more than a couple of dollars of API calls if you use each provider's cheapest models, and that paid APIs are optional thanks to Ollama and free tiers such as Gemini's and OpenRouter's free models. A few optional full-size runs cost more: rewriting 800,000 product records in Week 6 (under $30 with a fast, cheap provider; under $1 for the 20,000-item version) and the full fine-tuning run in Week 7 (about $10). The smaller versions teach the same lessons.</p>
 
 <h2>When it doesn't work</h2>
 <ul>
-  <li><strong>Run <code>setup/troubleshooting.ipynb</code></strong>. It walks through the kernel, imports, the <code>.env</code> file and a test call step by step.</li>
-  <li><strong>Corporate networks</strong>: VPNs, firewalls and TLS inspection cause SSL errors and blocked downloads. Test on a phone hotspot to prove whether it's the network.</li>
-  <li><strong>Windows</strong>: the 260-character path limit, permissions, and missing Microsoft Build Tools are the usual culprits; the setup guide links fixes for each.</li>
-  <li><strong>Mac</strong>: install the Xcode command-line tools if compilers are missing.</li>
+  <li><strong>Corporate networks</strong>: VPNs, firewalls and TLS inspection cause SSL errors and blocked downloads. Try a phone hotspot to prove whether it's the network.</li>
+  <li><strong>Windows</strong>: the 260-character path limit, file permissions, and missing Microsoft C++ Build Tools are the usual culprits.</li>
+  <li><strong>Mac</strong>: install the Xcode command-line tools (<code>xcode-select --install</code>) if compilers are missing.</li>
   <li><strong>Name errors</strong> in a notebook almost always mean a cell above wasn't run. Restart the kernel and run from the top.</li>
   <li><strong>A model stops working</strong>: providers retire models every few months. Swap in the closest current model from the same provider.</li>
-</ul>
-
-<h2>The guides folder</h2>
-<p>The repo ships 14 short guides for filling gaps: the command line, git and GitHub, technical foundations (APIs, endpoints, environments), notebooks, Python foundations and intermediate Python, debugging, AI APIs and Ollama (Guide 9, the one to read if you want to avoid paid APIs), async Python, starting your own project, front-end basics, and Docker and Terraform. Skim the list now and come back when a week assumes something you haven't met.</p>
-
-<h2>How to study this course</h2>
-<ul>
-  <li><strong>Run every cell and read every output.</strong> The author runs the code during the lectures, and the labs are designed for you to change things and see what happens.</li>
-  <li><strong>Keep a lab notebook of your own.</strong> One markdown file per week: what surprised you, what broke, what you changed.</li>
-  <li><strong>Look at community contributions.</strong> Each week's folder has a <code>community-contributions</code> directory of students' versions of the exercises. They're a good source of ideas after you've tried yourself. You can add yours by pull request; Guide 3 explains the git steps, and the author asks that PRs touch only that folder, have notebook outputs cleared, and stay small.</li>
+  <li><strong>Ollama doesn't answer</strong>: visit <code>http://localhost:11434</code>; if it isn't running, start it with <code>ollama serve</code>. Stick to models of about 3 GB or less on a laptop.</li>
 </ul>
 
 <div class="takeaways"><h2>Takeaways</h2><ul>
-  <li><code>uv sync</code> gives you the exact environment the labs expect; choose the <code>.venv</code> kernel in each notebook.</li>
-  <li>Keys go in a file named exactly <code>.env</code> in the project root; Ollama means you can do almost everything without paying.</li>
+  <li>One uv project, one <code>.venv</code> kernel, dependencies added with <code>uv add</code>.</li>
+  <li>Keys go in a file named exactly <code>.env</code>, listed in <code>.gitignore</code>; Ollama means you can do almost everything for free.</li>
   <li>Expect a few dollars of API spend, plus optional extras for full-size runs in Weeks 6–7.</li>
-  <li>Pull the latest code each week, and swap in current model names when old ones retire.</li>
 </ul></div>
 
 <section class="quiz"><h2>Check your understanding</h2>
-<div class="q" data-correct="2"><p class="q-prompt">A notebook says your API key isn't found, but you created the file. What's the most likely cause?</p>
+<div class="q" data-correct="2"><p class="q-prompt">Your script says the API key isn't found, but you created the file. What's most likely?</p>
 <ol><li><button>The key has expired</button></li><li><button>uv didn't install python-dotenv</button></li><li><button>The file is named <code>.env.txt</code> or wasn't saved</button></li><li><button>Ollama is not running</button></li></ol>
-<p class="q-why">The setup guide singles out file naming and saving as the most common problem by far. The loader only looks for a file named exactly <code>.env</code>.</p></div>
-<div class="q" data-correct="0"><p class="q-prompt">In this project, how do you add a new package?</p>
+<p class="q-why">The loader only looks for a file named exactly <code>.env</code>, and only sees what's been saved.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">How do you add a package to this project?</p>
 <ol><li><button><code>uv add package-name</code></button></li><li><button><code>pip install package-name</code> in any terminal</button></li><li><button>Edit <code>requirements.txt</code></button></li><li><button><code>conda install package-name</code></button></li></ol>
-<p class="q-why"><code>uv add</code> updates <code>pyproject.toml</code> and the lock file and installs into the project's <code>.venv</code>, so everything stays reproducible.</p></div>
+<p class="q-why"><code>uv add</code> updates <code>pyproject.toml</code> and the lock file and installs into the project's <code>.venv</code>, so the project stays reproducible.</p></div>
 <div class="q" data-correct="3"><p class="q-prompt">You'd rather not pay for any API. What's the plan?</p>
-<ol><li><button>Skip Weeks 1 and 2</button></li><li><button>Use the author's keys from the videos</button></li><li><button>Only watch the videos</button></li><li><button>Run models locally with Ollama and use free tiers such as Gemini's or OpenRouter's free models, per Guide 9</button></li></ol>
-<p class="q-why">Every OpenAI-style call in the course can point at Ollama's local endpoint instead, at the cost of using smaller, less capable models.</p></div>
+<ol><li><button>Skip Weeks 1 and 2</button></li><li><button>Only read the lessons</button></li><li><button>Borrow someone's key</button></li><li><button>Run models locally with Ollama and use free tiers for the rest</button></li></ol>
+<p class="q-why">Every OpenAI-style call in this course can point at Ollama's local endpoint instead, at the cost of smaller, less capable models.</p></div>
 <p class="quiz-score"></p></section>
 
-<section class="exercise" style="--wire:var(--w0s)"><h2>Exercise: prove the workshop works</h2>
-<ol>
-  <li>Run <code>setup/troubleshooting.ipynb</code> top to bottom and get every check passing.</li>
-  <li>In a scratch notebook, call Ollama's <code>llama3.2</code> through its OpenAI-compatible endpoint (you'll see how in Module 1) and get a reply.</li>
-  <li>Set a monthly budget limit on every paid provider account you created.</li>
-</ol>
-</section>
-
-<h2>Read the originals</h2>
+<h2>References</h2>
 <ul class="sources">
-  <li><a href="https://github.com/ed-donner/llm_engineering/blob/main/setup/SETUP-new.md">SETUP-new.md</a> — the setup guide in the repo</li>
-  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/guides">guides/</a> — the 14 foundation guides</li>
-  <li><a href="https://docs.astral.sh/uv/getting-started/installation/">Installing uv</a> — Astral documentation</li>
-  <li><a href="https://edwarddonner.com/faq">Course FAQ</a> — Ed Donner</li>
+  <li><a href="https://docs.astral.sh/uv/">uv documentation</a> — Astral</li>
+  <li><a href="https://ollama.com">Ollama</a></li>
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/setup">Reference setup guide</a> — ed-donner/llm_engineering</li>
 </ul>
 <div class="mod-foot"></div>
 </section>

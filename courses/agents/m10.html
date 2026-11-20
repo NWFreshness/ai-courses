@@ -1,0 +1,127 @@
+
+<section class="module" id="m9" data-title="Production and safety" data-wire="var(--w9)" data-group="Beyond">
+<div class="wire-band" style="--wire:var(--w9)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 9 · after the six weeks</p>
+  <h1>Production and safety</h1>
+  <p class="lede">Every project in this course runs on your machine, with you nearby and small sums at stake. Production agents run unattended, for other people, with real permissions. This module lists what changes, shows how to evaluate an agent rather than eyeball it, and gives you a safety checklist to apply before an agent gets any power you'd regret.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w9)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Name the gaps between a course project and a production agent.</li>
+    <li>Build an evaluation suite that checks outcomes and the path taken, and run it on every change.</li>
+    <li>Apply least privilege, sandboxing, approvals and limits to an agent's tools.</li>
+    <li>Decide what to learn next, and where the Harness Engineering course picks up.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w9)">
+  <h2>Project: harden one agent you built</h2>
+  <ol>
+    <li>Pick one project from the course: the career assistant, the research agent, Sidekick or the trading floor.</li>
+    <li>Write 15–30 evaluation tasks for it with checks that a script can score, and record a baseline.</li>
+    <li>Walk the safety checklist below and fix the top three gaps.</li>
+    <li>Add a cost budget and alerts, then re-run the evaluation and compare.</li>
+  </ol>
+  <p class="cost">Cost: an evaluation run costs the same as running the agent that many times; use a small model for judging where you can.</p>
+</div>
+
+<h2>What changes in production</h2>
+<div class="tbl"><table>
+<thead><tr><th>Concern</th><th>In the course</th><th>In production</th></tr></thead>
+<tbody>
+<tr><td>Knowing it works</td><td>You watch a run and read the trace</td><td>An evaluation suite run on every change, plus monitoring of live runs</td></tr>
+<tr><td>Cost</td><td>A spending limit on your account</td><td>Per-run and per-user budgets, turn limits, cheaper models for easy steps, alerts</td></tr>
+<tr><td>Failures</td><td>You rerun it</td><td>Timeouts, retries with backoff, idempotent tools, and durable state so a crash resumes instead of restarting</td></tr>
+<tr><td>Permissions</td><td>Your keys, your files</td><td>A dedicated identity per agent with the narrowest scopes, secrets from a vault</td></tr>
+<tr><td>Untrusted input</td><td>Mostly your own prompts</td><td>Users and web pages that may try to redirect the agent (prompt injection)</td></tr>
+<tr><td>Running it</td><td>A script or notebook</td><td>Workers behind a queue, containers, one sandbox per task, a way to pause or stop agents</td></tr>
+<tr><td>People</td><td>You, nearby</td><td>Clear approval points, an audit log, and a way for users to report problems</td></tr>
+</tbody></table></div>
+
+<h2>Evaluating agents</h2>
+<p>An agent's output varies run to run, and so does the path it takes. Evaluate both. A task suite is a list of realistic inputs, each with checks your code can run:</p>
+<figure class="code"><figcaption>evals.py: a small, honest evaluation harness</figcaption><pre><code class="hl-py">import asyncio, json
+from dataclasses import dataclass
+from typing import Callable
+
+@dataclass
+class Case:
+    name: str
+    prompt: str
+    check: Callable[[str, list[str]], bool]      # (final output, tool names used) -> pass?
+
+CASES = [
+    Case("answers from profile", "Where did you study?",
+         lambda out, tools: "University" in out and not tools),
+    Case("records unknown question", "What's your favorite pizza topping?",
+         lambda out, tools: "record_unknown_question" in tools),
+    Case("captures a lead", "I'd like to hire you. I'm sam@example.com",
+         lambda out, tools: "record_user_details" in tools),
+]
+
+async def run_suite(run_agent, repeats: int = 3) -> dict:
+    results = {}
+    for case in CASES:
+        passes = 0
+        for _ in range(repeats):                  # agents vary: run each case more than once
+            output, tools_used = await run_agent(case.prompt)
+            passes += case.check(output, tools_used)
+        results[case.name] = passes / repeats
+    print(json.dumps(results, indent=2))
+    return results</code></pre></figure>
+<p>Prefer checks code can score: a tool was or wasn't called, a file exists, a test passes, a number is in range. Use a model judge with a written rubric only for qualities code can't check, and review a sample of its rulings yourself. Run each case several times and track the pass rate, because one pass proves little about a system that varies. Keep the suite in version control and run it whenever you change a prompt, a tool, a model or a framework version.</p>
+
+<div class="note principle"><h4>Every failure becomes a test</h4>
+<p>When an agent does something wrong in use, add that input to the suite before you fix it. Over time the suite becomes a record of everything that has ever gone wrong, and a guarantee that it won't go wrong the same way twice.</p></div>
+
+<h2>A safety checklist for agents with tools</h2>
+<ul>
+  <li><strong>Least privilege.</strong> Each tool does one narrow thing. Each agent gets only the tools its job needs. Keys have the smallest scopes the service offers.</li>
+  <li><strong>Constraints in tools, not prompts.</strong> Limits that matter (spend, recipients, paths, row counts) are enforced in the tool's code, which refuses and explains.</li>
+  <li><strong>Sandboxing.</strong> Agent-written code runs in a throwaway container or VM with no network unless needed and only the files it needs.</li>
+  <li><strong>Separate untrusted input from powerful actions.</strong> An agent that reads web pages, emails or user uploads shouldn't also hold tools that send, pay or delete, unless a human approves each use.</li>
+  <li><strong>Approval for the irreversible.</strong> Sending, paying, deleting and publishing pause for a person (Module 5's interrupts), with the exact action shown.</li>
+  <li><strong>Limits on everything.</strong> Turns per run, runs per hour, spend per day, retries per task.</li>
+  <li><strong>Logs you can audit.</strong> Every tool call with its arguments, result, the run it belonged to and who started it.</li>
+  <li><strong>A stop button.</strong> A way to pause one agent or all of them without a deploy.</li>
+</ul>
+
+<h2>Where to go next</h2>
+<p>The <a href="../harness-engineering/">Harness Engineering</a> course takes each of these topics further: <a href="../harness-engineering/#m3">designing tools</a>, <a href="../harness-engineering/#m4">context engineering</a>, <a href="../harness-engineering/#m6">long-running agents</a>, <a href="../harness-engineering/#m8">sandboxing and permissions</a>, <a href="../harness-engineering/#m9">durability and human-in-the-loop</a> and <a href="../harness-engineering/#m10">observability and evals</a>, ending with a production checklist. If you came here first, the <a href="../llm-engineering/">LLM Engineering</a> course covers retrieval and fine-tuning in depth.</p>
+<p>Beyond that, the fastest way to improve is to put one agent in front of real users with tight limits, and let the evaluation suite grow from what they do.</p>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Production adds evaluation, budgets, durability, scoped identities, injection defenses and human oversight.</li>
+  <li>Evaluate outcomes and paths with code-scored checks, several runs per case, on every change.</li>
+  <li>Enforce limits in tools; keep untrusted input away from powerful, irreversible actions.</li>
+  <li>Every failure in use becomes a new test case.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="3"><p class="q-prompt">An evaluation case passes once. Why run it several times?</p>
+<ol><li><button>To warm the cache</button></li><li><button>The first run is always wrong</button></li><li><button>Providers require it</button></li><li><button>Agents vary between runs, so a single pass says little about how often it passes</button></li></ol>
+<p class="q-why">Track pass rates per case. A case that passes two times in three is a problem a single run would hide.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">An email-triage agent reads incoming mail and can forward messages. What's the safest change?</p>
+<ol><li><button>Tell it in the prompt never to obey instructions in emails</button></li><li><button>Restrict forwarding to approved addresses in the tool, and require approval for anything else</button></li><li><button>Use a bigger model</button></li><li><button>Turn off tracing</button></li></ol>
+<p class="q-why">Emails are untrusted input. A constraint enforced in the tool holds even if the model is misled; a prompt instruction might not.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Which check should you prefer in an evaluation suite where possible?</p>
+<ol><li><button>One your code can score, such as whether a file exists or a test passes</button></li><li><button>A model judge for everything</button></li><li><button>Reading every output yourself</button></li><li><button>The agent's own opinion of its work</button></li></ol>
+<p class="q-why">Code-scored checks are cheap, fast and consistent. Save model judges for qualities that need them, and spot-check them.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w9)"><h2>Exercise: a red-team afternoon</h2>
+<p>Take the agent you hardened and try to make it misbehave: hide instructions in a web page it will read, ask it to exceed its limits politely and then insistently, and feed a tool an input that makes it fail halfway. Add every successful attack to the evaluation suite as a case that must fail safely, then fix the agent until the suite passes.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://www.anthropic.com/engineering/building-effective-agents">Building effective agents</a> — Anthropic</li>
+  <li><a href="https://genai.owasp.org/llm-top-10/">OWASP Top 10 for LLM applications</a></li>
+  <li><a href="https://openai.github.io/openai-agents-python/guardrails/">Guardrails</a> — OpenAI Agents SDK</li>
+  <li><a href="https://github.com/ed-donner/agents">ed-donner/agents</a> — the reference course</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

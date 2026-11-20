@@ -1,40 +1,41 @@
 <section class="module" id="start" data-title="Start here" data-wire="var(--w0)" data-group="Course">
 <div class="wire-band" style="--wire:linear-gradient(90deg,var(--w1),var(--w2),var(--w3),var(--w4),var(--w5),var(--w6),var(--w7),var(--w8));background:var(--wire)"></div>
 <div class="hero wide">
-  <p class="mod-num">A companion course · 10 modules · follows the repo week by week</p>
+  <p class="mod-num">An 8-week course · 10 modules · one project per week</p>
   <h1>LLM Engineering, week by week</h1>
-  <p class="lede" style="max-width:40rem">Ed Donner's <a href="https://github.com/ed-donner/llm_engineering">llm_engineering</a> repo is an eight-week, project-driven course that ends with an autonomous agent that finds bargains and sends them to your phone. This companion sits beside it: for each week it explains the ideas behind the notebooks, maps which file does what, flags where people get stuck, and gives you checks and exercises so the material sticks.</p>
+  <p class="lede" style="max-width:40rem">Learn to build products on large language models, from your first API call to a fine-tuned open model running inside an autonomous agent. Each week teaches the ideas, then walks you through building a working project of your own, with checks and exercises to make it stick.</p>
   {{HERO}}
-  <p class="meta">Each token is a week. Select one to open it, or start with <a href="#m0">Module 0: set up the workshop</a>.</p>
+  <p class="meta">Each token is a week. Select one to open it, or start with <a href="#m0">Module 0: set up your workshop</a>.</p>
 </div>
 
 <div style="max-width:46rem">
-<h2>How to use this with the repo</h2>
-<p>The repo is the course; this is the study guide. The labs are Jupyter notebooks, and the author's advice is to run every cell, look at what comes back, and change things. This guide doesn't replace that. Keep both open: notebooks in Cursor or VS Code, this page on a second screen or your phone.</p>
-<ol>
-  <li><strong>Before a week</strong>, read the module's objectives and the notebook map so you know where you're heading.</li>
-  <li><strong>During the week</strong>, work through the notebooks in order. Use the concept sections here when something in a notebook feels like magic.</li>
-  <li><strong>After the week</strong>, take the quiz, do the exercise, and look at the "Go further" section. Several point into the <a href="../harness-engineering/">Harness Engineering</a> course, which picks up where this one stops.</li>
-</ol>
-
 <h2>What you'll build</h2>
 <div class="tbl"><table>
-<thead><tr><th>Week</th><th>Main project</th><th>Where it runs</th></tr></thead>
+<thead><tr><th>Week</th><th>Project</th><th>Runs on</th></tr></thead>
 <tbody>
-<tr><td>1</td><td>A website summarizer, then a company brochure generator</td><td>Your machine; frontier APIs or Ollama</td></tr>
-<tr><td>2</td><td>Multi-model chat, Gradio UIs, and an airline assistant that uses tools, images and speech</td><td>Your machine</td></tr>
-<tr><td>3</td><td>Hugging Face pipelines, tokenizers, models, and a meeting-minutes generator</td><td>Google Colab GPU</td></tr>
-<tr><td>4</td><td>A code converter that ports Python to C++ or Rust and races the results</td><td>Your machine</td></tr>
-<tr><td>5</td><td>A question-answering assistant over a company knowledge base, with evaluation</td><td>Your machine</td></tr>
-<tr><td>6</td><td>"The Price Is Right": a product-price predictor, from data curation to baselines</td><td>Your machine</td></tr>
-<tr><td>7</td><td>Fine-tuning an open-source model (Llama 3.2 3B) with QLoRA</td><td>Google Colab GPU</td></tr>
-<tr><td>8</td><td>A multi-agent system that scans deals, prices them and notifies you</td><td>Your machine plus Modal</td></tr>
+<tr><td>1</td><td>A web-page summarizer, then a two-step company brochure writer</td><td>Your machine; a frontier API or Ollama</td></tr>
+<tr><td>2</td><td>A chat assistant with a web UI that looks things up in a database and can draw and speak</td><td>Your machine</td></tr>
+<tr><td>3</td><td>Open models with Hugging Face, ending in a meeting-minutes generator from audio</td><td>Google Colab GPU</td></tr>
+<tr><td>4</td><td>A model race: convert Python to C++ and measure correctness and speed</td><td>Your machine</td></tr>
+<tr><td>5</td><td>A question-answering assistant over a document collection, with a real evaluation</td><td>Your machine</td></tr>
+<tr><td>6</td><td>A product-price predictor: data curation, baselines, frontier models</td><td>Your machine</td></tr>
+<tr><td>7</td><td>Fine-tuning a 3-billion-parameter open model with QLoRA to beat those baselines</td><td>Google Colab GPU</td></tr>
+<tr><td>8</td><td>A multi-agent system that scans deals, prices them and notifies your phone</td><td>Your machine plus a serverless GPU</td></tr>
 </tbody></table></div>
-<p>Weeks 6–8 form one capstone. The leaderboard of prediction errors from those weeks appears throughout this guide, and you'll watch it improve as each technique lands.</p>
+<p>Weeks 6–8 form one capstone. A leaderboard of prediction errors runs through those weeks so you can see what each technique is worth.</p>
 
-<h2>A note on currency</h2>
-<p>This guide was written in November 2026 against the repo as it stood then (it's updated often). Model names in the notebooks change as providers retire models; the author's guidance is that if a model stops working, you swap in the nearest current one from the same provider. This guide talks about kinds of models rather than specific names wherever it can, so it ages more slowly than the code.</p>
+<h2>How each module works</h2>
+<ol>
+  <li><strong>Objectives</strong> tell you what you'll be able to do.</li>
+  <li><strong>The project</strong> box describes what you'll build that week and the steps to get there.</li>
+  <li><strong>The lessons</strong> explain the ideas, with short code you can type and run.</li>
+  <li><strong>Pitfalls, takeaways, a quiz and an exercise</strong> close each module, followed by references.</li>
+</ol>
+<p>Type the code rather than copying it when you can, run it, and then change it. Keep a short log per week of what surprised you and what broke. Progress is saved in this browser.</p>
 
-<div class="mod-foot"><span></span><a class="btn" href="#m0">Start Module 0: set up the workshop</a></div>
+<h2>Where this syllabus comes from</h2>
+<p>The week-by-week structure, the projects and the published results follow Ed Donner's open <a href="https://github.com/ed-donner/llm_engineering">llm_engineering</a> repository, which accompanies his course of the same name. This course teaches the same subjects in its own words and code, so you don't need the repo to follow along; each module links to the matching folder if you want to see a reference implementation. Written in November 2026. Model names change often; where this course names a model, swap in the current equivalent from the same provider.</p>
+
+<div class="mod-foot"><span></span><a class="btn" href="#m0">Start Module 0: set up your workshop</a></div>
 </div>
 </section>

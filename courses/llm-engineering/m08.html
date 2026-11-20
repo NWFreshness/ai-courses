@@ -1,7 +1,7 @@
 <section class="module" id="m7" data-title="Week 7: Fine-tuning with QLoRA" data-wire="var(--w7)" data-group="Applied">
 <div class="wire-band" style="--wire:var(--w7)"></div>
 <header class="mod-head">
-  <p class="mod-num">Week 7 · Module 7 of 9 · <code>week7/</code> (labs run in Google Colab) · capstone part 2</p>
+  <p class="mod-num">Week 7 · Module 7 of 9 · runs on a Google Colab GPU · capstone part 2</p>
   <h1>Fine-tuning an open-source model with QLoRA</h1>
   <p class="lede">Week 7 takes a small open model, Meta's Llama 3.2 with 3 billion parameters, and trains it on the product data to predict prices. Out of the box it's the worst entry on the leaderboard. After QLoRA fine-tuning on the full dataset, it beats every frontier model from Week 6, on a model small enough to serve from a single cheap GPU.</p>
 </header>
@@ -16,18 +16,17 @@
   </ul>
 </div>
 
-<h2>Notebook map</h2>
-<p>As in Week 3, the files in <code>week7/</code> point to Colab notebooks. Save a copy of each to your Drive before running it.</p>
-<div class="tbl nbmap"><table>
-<thead><tr><th>File</th><th>Topic</th><th>Look for</th></tr></thead>
-<tbody>
-<tr><td><code>day1.ipynb</code></td><td>QLoRA: how quantization and low-rank adapters fit together</td><td>Memory footprint before and after quantization</td></tr>
-<tr><td><code>day2.ipynb</code></td><td>Prompt data and the base model</td><td>The training prompt format; how badly the base model does</td></tr>
-<tr><td><code>day3 and 4.ipynb</code></td><td>Training, part 1 and part 2</td><td>Training loss over time; checkpoints pushed to the Hub</td></tr>
-<tr><td><code>day5.ipynb</code></td><td>Evaluating the fine-tuned model</td><td>The same <code>Tester</code> as Week 6</td></tr>
-<tr><td><code>results.ipynb</code></td><td>The updated leaderboard</td><td>Where lite and full training land</td></tr>
-</tbody></table></div>
-<p class="cost">Cost: the lite dataset trains on a low-cost Colab GPU; the author reports spending about $10 on the full run, and suggests the cheaper dataset if you want to keep costs down. The prompt datasets are on the Hub as <code>items_prompts_lite</code> and <code>items_prompts_full</code>.</p>
+<div class="build" style="--wire:var(--w7)">
+  <h2>Project: The Price Is Right, part 2</h2>
+  <ol>
+    <li>Turn your Week 6 data into training prompts that end where the price begins, and push train and test sets to the Hugging Face Hub.</li>
+    <li>In Colab, load the base Llama 3.2 3B in 4-bit and evaluate it with your <code>Tester</code> before any training.</li>
+    <li>Configure LoRA adapters and a supervised fine-tuning trainer; train on the lite data, pushing checkpoints to the Hub.</li>
+    <li>Evaluate the trained adapter with the same <code>Tester</code> and sample.</li>
+    <li>If budget allows, train on the full data and compare.</li>
+  </ol>
+  <p class="cost">Cost: the lite run fits a low-cost Colab GPU; the reference course reports about $10 for the full run.</p>
+</div>
 
 <h2>Why not just train the whole model?</h2>
 <p>Full fine-tuning updates every one of the model's parameters. For 3 billion parameters, that means holding the weights, their gradients and the optimizer's state in GPU memory at once, which is many times the size of the model and far beyond a single affordable GPU. Two ideas fix this.</p>
@@ -79,18 +78,18 @@ base = AutoModelForCausalLM.from_pretrained(<span class="s">"meta-llama/Llama-3.
                                             quantization_config=quant_4bit, device_map=<span class="s">"auto"</span>)
 <span class="c"># A supervised fine-tuning trainer then wraps base + lora + the prompt dataset,</span>
 <span class="c"># logs the training loss, and pushes adapter checkpoints to the Hugging Face Hub.</span></code></pre></figure>
-<p>The exact values the course uses are in the Colab notebooks; treat the numbers above as a starting point for your own runs, not the course's settings.</p>
+<p>Treat these numbers as a starting point for your own runs and adjust from what the loss and evaluation tell you.</p>
 
 <h2>Teach the format, not just the facts</h2>
-<p>Each training example is a prompt that ends exactly where the answer begins, followed by the price. That trains the model to produce a number in the expected place, which makes its output easy to parse. Day 2 shows how poorly the base model does before training, and the first leaderboard entry for this week confirms it: the 4-bit base model is worse than guessing the average.</p>
+<p>Each training example is a prompt that ends exactly where the answer begins, followed by the price. That trains the model to produce a number in the expected place, which makes its output easy to parse. Evaluate the base model before training and you'll see how poorly it does; the first leaderboard entry for this week confirms it: the 4-bit base model is worse than guessing the average.</p>
 <div class="note principle"><h4>Base model, not instruct</h4>
-<p>The course fine-tunes the base Llama 3.2 3B rather than a chat-tuned version. For a narrow task with a fixed output format, a base model trained on your prompt format doesn't need the chat template or conversational habits, and the format you train is the format you get.</p></div>
+<p>Fine-tune the base Llama 3.2 3B rather than a chat-tuned version. For a narrow task with a fixed output format, a base model trained on your prompt format doesn't need the chat template or conversational habits, and the format you train is the format you get.</p></div>
 
 <h2>Training, then the moment of truth</h2>
-<p>Training runs over two days of the course because it takes hours on the full dataset. Watch the training loss fall and level off, keep checkpoints on the Hub so a Colab disconnect doesn't lose your work, and then evaluate with the very same <code>Tester</code> from Week 6. Same test, same sample: the only thing that changed is the model.</p>
+<p>Training takes hours on the full dataset. Watch the training loss fall and level off, keep checkpoints on the Hub so a Colab disconnect doesn't lose your work, and then evaluate with the very same <code>Tester</code> from Week 6. Same test, same sample: the only thing that changed is the model.</p>
 <figure class="diagram">
 {{LEADERBOARD:7}}
-<figcaption>After Week 7, from the repo's <code>week7/results.ipynb</code>. Fine-tuned on the full dataset, the 3B model has the lowest error so far, ahead of every zero-shot frontier model.</figcaption>
+<figcaption>After Week 7, as published by the reference course. Fine-tuned on the full dataset, the 3B model has the lowest error so far, ahead of every zero-shot frontier model.</figcaption>
 </figure>
 <p>Two lessons sit in that chart. Data volume mattered enormously: the same recipe on the lite dataset lands mid-table, while the full dataset takes first place. And specialization beats size for a narrow task: a 3-billion-parameter model, trained on the right data, outperforms frontier models that are vastly larger.</p>
 
@@ -120,9 +119,9 @@ base = AutoModelForCausalLM.from_pretrained(<span class="s">"meta-llama/Llama-3.
 <p>Train on the lite dataset twice, changing exactly one thing: the rank (say 16 versus 64) or the target modules (attention only versus attention plus MLP). Evaluate both with the <code>Tester</code>, and record error, training time and adapter size. Write two sentences on whether the change was worth its cost.</p>
 </section>
 
-<h2>Read the originals</h2>
+<h2>References</h2>
 <ul class="sources">
-  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week7">week7/</a> — links to each Colab notebook</li>
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week7">Week 7 reference implementation</a> — ed-donner/llm_engineering</li>
   <li><a href="https://arxiv.org/abs/2106.09685">LoRA: Low-Rank Adaptation of Large Language Models</a> — Hu et al., 2021</li>
   <li><a href="https://arxiv.org/abs/2305.14314">QLoRA: Efficient Finetuning of Quantized LLMs</a> — Dettmers et al., 2023</li>
   <li><a href="https://huggingface.co/docs/peft">PEFT documentation</a> — Hugging Face</li>

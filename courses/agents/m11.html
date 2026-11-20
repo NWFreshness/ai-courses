@@ -1,0 +1,161 @@
+
+<section class="module" id="cheatsheet" data-title="Cheat sheet" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Cheat sheet</h1>
+<p class="lede">The idioms you'll type most often, framework by framework.</p></header>
+
+<h2>The loop by hand</h2>
+<figure class="code"><figcaption>Module 2</figcaption><pre><code class="hl-py">for _ in range(max_turns):
+    r = client.chat.completions.create(model=MODEL, messages=messages, tools=schemas)
+    choice = r.choices[0]
+    if choice.finish_reason != "tool_calls":
+        break
+    messages.append(choice.message)
+    for call in choice.message.tool_calls:
+        result = TOOLS[call.function.name](**json.loads(call.function.arguments))
+        messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result)})</code></pre></figure>
+
+<h2>OpenAI Agents SDK</h2>
+<figure class="code"><figcaption>Module 3 · <code>uv add openai-agents</code></figcaption><pre><code class="hl-py">from agents import Agent, Runner, trace, function_tool, SQLiteSession, ModelSettings
+
+@function_tool
+def lookup(term: str) -> str:
+    """Look up a term."""
+
+agent = Agent(name="A", instructions="...", model="gpt-5.4-mini", tools=[lookup],
+              output_type=MyModel, handoffs=[other], input_guardrails=[guard],
+              model_settings=ModelSettings(tool_choice="required"), mcp_servers=[server])
+with trace("name"):
+    result = await Runner.run(agent, "task", session=SQLiteSession("id", "db.sqlite"), max_turns=20)
+result.final_output
+tool = agent.as_tool(tool_name="writer", tool_description="Writes an email")</code></pre></figure>
+
+<h2>CrewAI</h2>
+<figure class="code"><figcaption>Module 4 · <code>uv tool install crewai</code>, <code>crewai create crew NAME</code>, <code>crewai run</code></figcaption><pre><code class="hl-py">@CrewBase
+class MyCrew():
+    @agent
+    def researcher(self) -> Agent:
+        return Agent(config=self.agents_config["researcher"], tools=[SerperDevTool()])
+    @task
+    def research(self) -> Task:
+        return Task(config=self.tasks_config["research"], output_pydantic=Findings)
+    @crew
+    def crew(self) -> Crew:
+        return Crew(agents=self.agents, tasks=self.tasks, process=Process.sequential)
+
+MyCrew().crew().kickoff(inputs={"topic": "..."}).raw</code></pre></figure>
+
+<h2>LangGraph and LangChain</h2>
+<figure class="code"><figcaption>Module 5</figcaption><pre><code class="hl-py">class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+builder = StateGraph(State)
+builder.add_node("chatbot", chatbot); builder.add_node("tools", ToolNode(tools))
+builder.add_edge(START, "chatbot")
+builder.add_conditional_edges("chatbot", tools_condition)
+builder.add_edge("tools", "chatbot")
+graph = builder.compile(checkpointer=MemorySaver())
+graph.invoke({"messages": [...]}, {"configurable": {"thread_id": "1"}})
+
+agent = create_agent(model="openai:gpt-5.4-mini", tools=tools, system_prompt="...",
+                     middleware=[HumanInTheLoopMiddleware(interrupt_on={"send": True})],
+                     checkpointer=InMemorySaver(), response_format=MyModel)
+agent.invoke(Command(resume={"decisions": [{"type": "approve"}]}), config)</code></pre></figure>
+
+<h2>Other frameworks</h2>
+<div class="tbl"><table>
+<thead><tr><th>Framework</th><th>Agent</th><th>Run</th><th>MCP</th></tr></thead>
+<tbody>
+<tr><td>Google ADK</td><td><code>LlmAgent(model, name, instruction, tools)</code></td><td><code>InMemoryRunner</code>, <code>adk web</code></td><td><code>McpToolset</code></td></tr>
+<tr><td>Pydantic AI</td><td><code>Agent("openai-chat:…", instructions, tools)</code></td><td><code>await agent.run()</code> → <code>.output</code></td><td><code>MCPToolset</code></td></tr>
+<tr><td>Strands</td><td><code>Agent(model, system_prompt, tools)</code></td><td><code>agent(…)</code>, <code>invoke_async</code></td><td><code>MCPClient</code></td></tr>
+<tr><td>Agent Framework</td><td><code>Agent(client, instructions, tools)</code></td><td><code>await agent.run()</code></td><td><code>MCPStdioTool</code></td></tr>
+<tr><td>Agno</td><td><code>Agent(model, instructions, tools)</code></td><td><code>agent.arun(input=)</code></td><td><code>MCPTools</code></td></tr>
+</tbody></table></div>
+
+<h2>MCP</h2>
+<figure class="code"><figcaption>Module 7</figcaption><pre><code class="hl-py"># client side (Agents SDK)
+params = {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", path]}
+async with MCPServerStdio(params=params, client_session_timeout_seconds=60) as server:
+    tools = await server.list_tools()
+remote = MCPServerStreamableHttp(name="Docs", params={"url": "https://.../mcp"})
+
+# server side (SDK 2.x; on 1.x: from mcp.server.fastmcp import FastMCP)
+from mcp.server.mcpserver import MCPServer
+mcp = MCPServer("name")
+
+@mcp.tool()
+async def do_thing(x: str) -> str:
+    """What it does."""
+
+mcp.run(transport="stdio")</code></pre></figure>
+<div class="mod-foot"></div>
+</section>
+
+<section class="module" id="glossary" data-title="Glossary" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Glossary</h1></header>
+<dl class="gloss">
+  <dt>A2A (Agent2Agent)</dt><dd>A protocol for agents to discover each other through agent cards and exchange tasks over HTTP.</dd>
+  <dt>Agent</dt><dd>A system in which a model directs its own process, choosing tools and steps in a loop until it decides the goal is met.</dd>
+  <dt>Agent card</dt><dd>A JSON description of an A2A agent's name, skills and endpoint, published at a well-known URL.</dd>
+  <dt>Agentic RAG</dt><dd>Retrieval where the agent decides what to store and when to search, using a vector store as a tool.</dd>
+  <dt>Agents as tools</dt><dd>Wrapping an agent so another agent can call it and get its result back, keeping the caller in control.</dd>
+  <dt>Checkpointer</dt><dd>In LangGraph, the component that saves the graph's state after every step, keyed by thread.</dd>
+  <dt>Context engineering</dt><dd>Deciding everything a model sees when it acts: instructions, memory, retrieved documents, tool results and live data.</dd>
+  <dt>Crew</dt><dd>In CrewAI, a set of agents and tasks run by a process: sequential or hierarchical.</dd>
+  <dt>Evaluator-optimizer</dt><dd>A workflow where one model's output is checked by another, and revised until it passes.</dd>
+  <dt>Guardrail</dt><dd>A check on an agent's input or output that can stop a run when it trips.</dd>
+  <dt>Handoff</dt><dd>Passing control of a conversation from one agent to another, which then continues it.</dd>
+  <dt>Hierarchical process</dt><dd>A crew run in which a manager agent delegates tasks and reviews results.</dd>
+  <dt>Human in the loop</dt><dd>Pausing an agent for a person's approval, edit or rejection before an action, then resuming.</dd>
+  <dt>Interrupt</dt><dd>In LangGraph, a pause that saves state and returns control to the caller until resumed with a <code>Command</code>.</dd>
+  <dt>MCP (Model Context Protocol)</dt><dd>An open protocol connecting AI applications to tools, resources and prompts served by MCP servers.</dd>
+  <dt>MCP host, client, server</dt><dd>The application; its per-server connection; and the program exposing capabilities.</dd>
+  <dt>Middleware</dt><dd>In LangChain agents, code that runs before or after model calls or around tool calls.</dd>
+  <dt>Orchestrator-workers</dt><dd>A pattern where a coordinating model decides subtasks at run time and delegates them.</dd>
+  <dt>Prompt injection</dt><dd>Instructions hidden in content an agent reads, aimed at making it act against its user.</dd>
+  <dt>Reducer</dt><dd>In LangGraph, a function that says how a state field combines old and new values, such as <code>add_messages</code>.</dd>
+  <dt>Resource (MCP)</dt><dd>Data an MCP server exposes for reading, identified by a URI.</dd>
+  <dt>Session</dt><dd>In the Agents SDK, stored conversation history replayed across runs.</dd>
+  <dt>Span</dt><dd>One timed step inside a trace: a model call, a tool call, an agent turn or a handoff.</dd>
+  <dt>stdio / Streamable HTTP</dt><dd>MCP's two transports: a local subprocess over standard input and output, or a remote server over HTTP.</dd>
+  <dt>Structured output</dt><dd>A model response constrained to, and validated against, a schema such as a Pydantic model.</dd>
+  <dt>Tool</dt><dd>A function an agent can ask to run, described to the model by a name, description and argument schema.</dd>
+  <dt>Trace</dt><dd>A record of one run: every model call, tool call and handoff, with timing.</dd>
+  <dt>Workflow</dt><dd>A system where models and tools follow code paths written in advance.</dd>
+</dl>
+<div class="mod-foot"></div>
+</section>
+
+<section class="module" id="sources" data-title="Sources and further reading" data-wire="var(--w0)" data-group="Reference">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head"><p class="mod-num">Reference</p><h1>Sources and further reading</h1>
+<p class="lede">Written in November 2026. The syllabus and projects follow Ed Donner's agents course and repository; the explanations, code and exercises here are this course's own.</p></header>
+<h2>The reference course</h2>
+<ul class="sources">
+  <li><a href="https://github.com/ed-donner/agents">ed-donner/agents</a> — the reference syllabus and implementations (MIT license)</li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/guides">Guides</a> — technical foundations, async Python and debugging</li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/setup">Setup instructions</a> — Mac, PC, Linux and Node</li>
+</ul>
+<h2>Frameworks</h2>
+<ul class="sources">
+  <li><a href="https://openai.github.io/openai-agents-python/">OpenAI Agents SDK</a> · <a href="https://docs.crewai.com/">CrewAI</a> · <a href="https://docs.langchain.com/oss/python/langgraph/overview">LangGraph</a> · <a href="https://docs.langchain.com/oss/python/langchain/overview">LangChain</a> · <a href="https://docs.langchain.com/oss/python/deepagents/overview">Deep Agents</a></li>
+  <li><a href="https://google.github.io/adk-docs/">Google ADK</a> · <a href="https://ai.pydantic.dev/">Pydantic AI</a> · <a href="https://strandsagents.com/">Strands Agents</a> · <a href="https://learn.microsoft.com/en-us/agent-framework/">Microsoft Agent Framework</a> · <a href="https://docs.agno.com/">Agno</a> · <a href="https://mastra.ai/docs">Mastra</a></li>
+</ul>
+<h2>Protocols</h2>
+<ul class="sources">
+  <li><a href="https://modelcontextprotocol.io/">Model Context Protocol</a> · <a href="https://py.sdk.modelcontextprotocol.io/">MCP Python SDK</a> · <a href="https://registry.modelcontextprotocol.io">MCP registry</a> · <a href="https://github.com/modelcontextprotocol/servers">reference servers</a></li>
+  <li><a href="https://a2a-protocol.org/">Agent2Agent (A2A) protocol</a></li>
+</ul>
+<h2>Ideas</h2>
+<ul class="sources">
+  <li><a href="https://www.anthropic.com/engineering/building-effective-agents">Building effective agents</a> — Anthropic</li>
+  <li><a href="https://genai.owasp.org/llm-top-10/">OWASP Top 10 for LLM applications</a></li>
+</ul>
+<h2>Services used</h2>
+<ul class="sources">
+  <li><a href="https://openrouter.ai/">OpenRouter</a> · <a href="https://ollama.com">Ollama</a> · <a href="https://pushover.net/api">Pushover</a> · <a href="https://serper.dev/">Serper</a> · <a href="https://tavily.com/">Tavily</a> · <a href="https://render.com/">Render</a> · <a href="https://www.gradio.app/docs">Gradio</a></li>
+</ul>
+<div class="mod-foot"></div>
+</section>

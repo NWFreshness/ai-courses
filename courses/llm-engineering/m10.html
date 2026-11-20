@@ -1,33 +1,33 @@
-<section class="module" id="m9" data-title="From notebook to production" data-wire="var(--w9)" data-group="Beyond the course">
+<section class="module" id="m9" data-title="From prototype to production" data-wire="var(--w9)" data-group="Beyond the course">
 <div class="wire-band" style="--wire:var(--w9)"></div>
 <header class="mod-head">
   <p class="mod-num">Module 9 of 9 · after Week 8</p>
-  <h1>From notebook to production</h1>
-  <p class="lede">The course ends with a working product on your laptop. Running something like it for other people, every day, is a different job. This module lists what the notebooks deliberately leave out, gives you a checklist for your own first project, and points to where each topic is covered in depth.</p>
+  <h1>From prototype to production</h1>
+  <p class="lede">The course ends with a working product on your laptop. Running something like it for other people, every day, is a different job. This module lists what a learning prototype deliberately leaves out, gives you a checklist for your own first project, and points to where each topic is covered in depth.</p>
 </header>
 
 <div class="objectives" style="--wire:var(--w9)">
   <h2>By the end of this module you can</h2>
   <ul>
-    <li>Name the gaps between a notebook prototype and a production LLM application.</li>
+    <li>Name the gaps between a prototype and a production LLM application.</li>
     <li>Plan a portfolio project that uses at least three of the course's techniques.</li>
     <li>Choose where to go next for agents, evaluation and reliability.</li>
   </ul>
 </div>
 
-<h2>What the notebooks leave out (on purpose)</h2>
-<p>Labs optimize for learning: global variables, everything in one process, keys in a local file, a human watching. None of that is wrong for a lab. Here's what changes when it isn't a lab.</p>
+<h2>What a prototype leaves out (on purpose)</h2>
+<p>Learning projects optimize for learning: notebooks and global variables, everything in one process, keys in a local file, a human watching. None of that is wrong for a prototype. Here's what changes when it isn't one.</p>
 <div class="tbl"><table>
-<thead><tr><th>Concern</th><th>In the labs</th><th>In production</th><th>Go deeper</th></tr></thead>
+<thead><tr><th>Concern</th><th>In a prototype</th><th>In production</th><th>Go deeper</th></tr></thead>
 <tbody>
-<tr><td>Code structure</td><td>Notebook cells and globals</td><td>Modules, tests, configuration, and a CLI or API entry point (Weeks 5 and 8 start this)</td><td>Guide 12 in the repo</td></tr>
+<tr><td>Code structure</td><td>Notebook cells and globals</td><td>Modules, tests, configuration, and a CLI or API entry point (Weeks 5 and 8 start this)</td><td>Your own tooling and tests</td></tr>
 <tr><td>Evaluation</td><td>Run once, eyeball, chart</td><td>A regression suite on every change, with reliability measured over repeated runs</td><td><a href="../harness-engineering/#m10">Harness Engineering 10</a></td></tr>
 <tr><td>Observability</td><td><code>print</code> and agent logs</td><td>Traces of every model and tool call, with cost and latency per request</td><td><a href="../harness-engineering/#m10">Harness Engineering 10</a></td></tr>
 <tr><td>Failure handling</td><td>Re-run the cell</td><td>Retries with backoff, timeouts, fallbacks, and state that survives a crash</td><td><a href="../harness-engineering/#m9">Harness Engineering 9</a></td></tr>
 <tr><td>Security</td><td>Trusted inputs, your machine</td><td>Untrusted inputs, prompt injection, sandboxed code execution, secrets management</td><td><a href="../harness-engineering/#m8">Harness Engineering 8</a></td></tr>
 <tr><td>Cost control</td><td>Watch the dashboard</td><td>Budgets per request and per user, caching, routing cheap tasks to cheap models</td><td>Week 2 (caching), <a href="../harness-engineering/#m4">Harness Engineering 4</a></td></tr>
 <tr><td>Model drift</td><td>Swap the model name when it breaks</td><td>Pinned versions, a re-evaluation whenever a model changes, a planned fallback</td><td><a href="../harness-engineering/#m11">Harness Engineering 11</a></td></tr>
-<tr><td>Deployment</td><td>Local Gradio, Modal for one service</td><td>Containers, infrastructure as code, a real hosting target</td><td>Guide 14 in the repo (Docker and Terraform)</td></tr>
+<tr><td>Deployment</td><td>Local Gradio, Modal for one service</td><td>Containers, infrastructure as code, a real hosting target</td><td>Docker and infrastructure-as-code guides</td></tr>
 </tbody></table></div>
 
 <h2>A first project worth showing</h2>
@@ -52,19 +52,19 @@
 
 <h2>Where to go next</h2>
 <ul>
-  <li><strong>Agents in depth.</strong> Week 8's closing note points to the author's companion material on agents (including a version of the planner rebuilt with the OpenAI Agents SDK and MCP servers), laid out in his <a href="https://edwarddonner.com/curriculum">curriculum</a>.</li>
+  <li><strong>Agents in depth.</strong> The <a href="../agents/">Agentic AI</a> course builds on Week 8 with agent frameworks (OpenAI Agents SDK, CrewAI, LangGraph and others) and MCP.</li>
   <li><strong>Reliability around agents.</strong> The <a href="../harness-engineering/">Harness Engineering</a> course covers the loop, tools, context, verification, sandboxing, durability and evaluation that turn a working agent into one you'd run unattended.</li>
-  <li><strong>Share what you built.</strong> Open a pull request to the repo's <code>community-contributions</code> folder; it's how other students learn from your version.</li>
+  <li><strong>Share what you built.</strong> Publish the project with its README and results table; a measured result is the most convincing thing in a portfolio.</li>
 </ul>
 
 <div class="takeaways"><h2>Takeaways</h2><ul>
-  <li>Labs leave out evaluation suites, tracing, failure handling, security, cost control and deployment on purpose; production needs all of them.</li>
+  <li>Prototypes leave out evaluation suites, tracing, failure handling, security, cost control and deployment on purpose; production needs all of them.</li>
   <li>The best next project is narrow, from your own work, measured against a baseline, and documented.</li>
   <li>The habit that carries over from every week: define success, measure it, change one thing, measure again.</li>
 </ul></div>
 
 <section class="quiz"><h2>Check your understanding</h2>
-<div class="q" data-correct="2"><p class="q-prompt">A provider retires the model your app uses. What does a production setup do that the labs don't?</p>
+<div class="q" data-correct="2"><p class="q-prompt">A provider retires the model your app uses. What does a production setup do that a prototype doesn't?</p>
 <ol><li><button>Waits for the provider to pick a replacement</button></li><li><button>Switches to the newest model automatically</button></li><li><button>Runs the evaluation suite on candidate replacements and switches to the one that holds the scores</button></li><li><button>Pins the old model forever</button></li></ol>
 <p class="q-why">Model changes are like any other change: measured before shipping, against the same tests.</p></div>
 <div class="q" data-correct="0"><p class="q-prompt">What makes a portfolio project convincing to someone reviewing it?</p>

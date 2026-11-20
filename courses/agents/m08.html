@@ -1,0 +1,190 @@
+
+<section class="module" id="m7" data-title="Model Context Protocol" data-wire="var(--w7)" data-group="Week 6: MCP">
+<div class="wire-band" style="--wire:var(--w7)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 6 · Module 7 of 9</p>
+  <h1>The Model Context Protocol</h1>
+  <p class="lede">You've already used MCP servers for files and a browser. This module explains what MCP is, how its transports work, how to write a server of your own with tools and resources, how to judge whether a third-party server is safe to run, and how to use MCP for context engineering: memory, search, a knowledge base the agent builds itself, and live data.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w7)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Explain hosts, clients and servers, and choose between stdio and Streamable HTTP.</li>
+    <li>Connect agents to local and remote MCP servers, and filter which tools they see.</li>
+    <li>Write an MCP server with tools and resources in Python, on either major SDK version.</li>
+    <li>Assess the risks of a third-party server, and give an agent memory, search and retrieval through MCP.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w7)">
+  <h2>Project: your own server, and an agent with a memory</h2>
+  <ol>
+    <li>Connect an agent to three servers at once (fetch, a browser and a sandboxed filesystem) and have it research a topic and save a summary file.</li>
+    <li>Write an <code>accounts</code> server: a small trading-account module with tools to check a balance and buy or sell shares, and a resource that reports an account. Use it from an agent.</li>
+    <li>Give an agent long-term memory with the knowledge-graph memory server, and check that it remembers you in a new run.</li>
+    <li>Build an agentic RAG agent: it searches the web, stores what it learns in a local vector database through MCP, and later answers from that store alone.</li>
+  </ol>
+  <p class="cost">Cost: cents. The memory, filesystem, fetch and vector servers run locally for free; Tavily has a free tier.</p>
+</div>
+
+<h2>What MCP is</h2>
+<p>MCP is an open protocol, introduced by Anthropic in late 2024 and now widely adopted, for connecting AI applications to tools and data. It's often described as a USB-C port for AI: write a server once, and any MCP-capable application can use it. Three roles are involved:</p>
+<div class="tbl"><table>
+<thead><tr><th>Role</th><th>What it is</th><th>In this course</th></tr></thead>
+<tbody>
+<tr><td>Host</td><td>The application the user or developer runs</td><td>Your agent program, or an app like Claude Desktop or Cursor</td></tr>
+<tr><td>Client</td><td>Lives inside the host; holds one connection to one server</td><td><code>MCPServerStdio</code> in the Agents SDK, <code>McpToolset</code> in ADK</td></tr>
+<tr><td>Server</td><td>A program that exposes tools, resources and prompts</td><td>fetch, Playwright, filesystem, and the one you'll write</td></tr>
+</tbody></table></div>
+<p>A server can offer three things. <strong>Tools</strong> are functions the model can call. <strong>Resources</strong> are data the host can read, identified by URIs. <strong>Prompts</strong> are reusable templates. Most servers are mainly tools.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 680 210" role="img" aria-label="An MCP host contains a client per server. A stdio server runs as a subprocess on the same machine and talks over standard input and output. A Streamable HTTP server runs elsewhere and is reached over HTTP.">
+  <defs><marker id="a7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+  <rect x="20" y="20" width="250" height="170" rx="8" class="box"/><text x="40" y="44" style="font-size:13px;font-weight:700">Host: your agent program</text>
+  <rect x="40" y="62" width="100" height="40" rx="6" fill="color-mix(in srgb,var(--w7) 18%,var(--paper))" stroke="var(--w7)" stroke-width="2"/><text x="90" y="87" text-anchor="middle" style="font-size:12px">agent + model</text>
+  <rect x="160" y="62" width="90" height="40" rx="6" class="box"/><text x="205" y="87" text-anchor="middle" style="font-size:12px">client</text>
+  <rect x="160" y="128" width="90" height="40" rx="6" class="box"/><text x="205" y="153" text-anchor="middle" style="font-size:12px">client</text>
+  <path d="M140 82 H160 M140 90 C150 120 150 148 160 148" class="ln"/>
+  <rect x="400" y="44" width="250" height="56" rx="6" class="box"/><text x="525" y="68" text-anchor="middle" style="font-size:13px;font-weight:600">stdio server</text><text x="525" y="86" text-anchor="middle" class="muted" style="font-size:11px">a local subprocess (npx, uvx, uv run)</text>
+  <rect x="400" y="120" width="250" height="56" rx="6" class="box" stroke-dasharray="5 3"/><text x="525" y="144" text-anchor="middle" style="font-size:13px;font-weight:600">Streamable HTTP server</text><text x="525" y="162" text-anchor="middle" class="muted" style="font-size:11px">hosted anywhere, reached by URL</text>
+  <path d="M250 82 H400" class="ln" marker-end="url(#a7)"/><path d="M250 148 H400" class="ln" marker-end="url(#a7)"/>
+  <text x="325" y="74" text-anchor="middle" class="muted" style="font-size:11px">stdin / stdout</text>
+  <text x="325" y="140" text-anchor="middle" class="muted" style="font-size:11px">HTTPS</text>
+  <path id="p7a" d="M90 82 H525" fill="none"/>
+  <g class="live"><circle r="5" fill="var(--w7)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="2.6s" repeatCount="indefinite"><mpath href="#p7a"/></animateMotion></circle></g>
+</svg>
+<figcaption>Both transports carry the same JSON-RPC messages. What differs is where the server runs, and whose machine it can touch.</figcaption>
+</figure>
+<p><strong>stdio</strong> servers are launched by the client as a subprocess and talk over standard input and output; they run on your machine with your permissions. <strong>Streamable HTTP</strong> servers run somewhere else and are reached by URL; they're how companies offer hosted MCP servers. (An older HTTP-with-server-sent-events transport is deprecated.) The newest specification revision is dated 2026-07-28, and current SDKs can run HTTP servers statelessly, with no session carried between requests, which makes them easy to host behind ordinary load balancers.</p>
+
+<h2>Using servers from an agent</h2>
+<figure class="code"><figcaption>browse_and_save.py: three servers, one agent</figcaption><pre><code class="hl-py">import asyncio, os
+from agents import Agent, Runner, trace
+from agents.mcp import MCPServerStdio
+
+fetch = {"command": "uvx", "args": ["mcp-server-fetch"]}
+browser = {"command": "npx", "args": ["@playwright/mcp@latest"]}
+sandbox = os.path.abspath("sandbox"); os.makedirs(sandbox, exist_ok=True)
+files = {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", sandbox]}
+
+async def main():
+    async with MCPServerStdio(params=fetch, client_session_timeout_seconds=60) as f, \
+               MCPServerStdio(params=browser, client_session_timeout_seconds=60) as b, \
+               MCPServerStdio(params=files, client_session_timeout_seconds=60) as fs:
+        print([t.name for t in await fs.list_tools()])
+        agent = Agent(name="researcher", model="gpt-5.4-mini", mcp_servers=[f, b, fs],
+            instructions="You browse the web to research tasks, and save results as markdown files.")
+        with trace("browse and save"):
+            result = await Runner.run(agent, "Find a well-reviewed banoffee pie recipe and save it as banoffee.md")
+        print(result.final_output)
+
+asyncio.run(main())</code></pre></figure>
+<p>The <code>async with</code> starts each server and stops it afterwards. <code>list_tools()</code> shows what the model will see. Raise <code>client_session_timeout_seconds</code> above the default (5 seconds) for anything that downloads on first run, as <code>npx</code> and <code>uvx</code> do. For a hosted server, use <code>MCPServerStreamableHttp(name="Docs", params={"url": "https://…/mcp", "timeout": 60})</code> instead; nothing is launched locally.</p>
+<p>To find servers, browse the official <a href="https://registry.modelcontextprotocol.io">MCP registry</a> and community directories such as <a href="https://glama.ai/mcp/servers">Glama</a> and <a href="https://smithery.ai">Smithery</a>.</p>
+
+<h2>Writing a server</h2>
+<p>A server is your functions behind a decorator. The example wraps a small <code>Account</code> class (balance, holdings, transactions and a strategy, persisted to a JSON file or SQLite); writing that class is a good warm-up, or reuse the one your Week 3 engineering crew wrote.</p>
+<figure class="code"><figcaption>accounts_server.py (MCP Python SDK 2.x)</figcaption><pre><code class="hl-py">from mcp.server.mcpserver import MCPServer
+from accounts import Account
+
+mcp = MCPServer("accounts_server")
+
+@mcp.tool()
+async def get_balance(name: str) -> float:
+    """Get the cash balance of the named account.
+
+    Args:
+        name: The account holder's name
+    """
+    return Account.get(name).balance
+
+@mcp.tool()
+async def buy_shares(name: str, symbol: str, quantity: int, rationale: str) -> str:
+    """Buy shares of a stock for the named account.
+
+    Args:
+        name: The account holder's name
+        symbol: The stock's ticker symbol
+        quantity: How many shares to buy
+        rationale: Why, and how it fits the account's strategy
+    """
+    return Account.get(name).buy_shares(symbol, quantity, rationale)
+
+@mcp.resource("accounts://accounts_server/{name}")
+async def read_account(name: str) -> str:
+    """A report on the named account: balance, holdings and recent transactions."""
+    return Account.get(name).report()
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")</code></pre></figure>
+<p>Add <code>get_holdings</code> and <code>sell_shares</code> the same way. Use it exactly like any other server: <code>{"command": "uv", "args": ["run", "accounts_server.py"]}</code>. Ask an agent "My name is Ed and my account is under Ed. What's my balance, and buy me three shares of Amazon", then read the account back through the resource.</p>
+<div class="note pitfall"><h4>FastMCP, MCPServer, and version 2</h4>
+<p>Version 2.0 of the MCP Python SDK (July 2026) renamed the server class: <code>from mcp.server.fastmcp import FastMCP</code> became <code>from mcp.server.mcpserver import MCPServer</code>, and the old import now fails. The decorators and <code>run(transport="stdio")</code> are unchanged. Much existing code, including many published servers, still uses the 1.x name, so you'll see both; pin <code>mcp&lt;2</code> to run older code, and when a third-party server breaks on import, running it with <code>uvx --with "mcp&lt;2" …</code> is a common fix. The standalone <code>fastmcp</code> package is a separate project that keeps the <code>FastMCP</code> name.</p></div>
+
+<h2>Is this server safe to run?</h2>
+<p>A stdio server is a program running on your machine, with your files, network and keys. Its tool results also go straight into your model's context. Before you add one, ask:</p>
+<ul>
+  <li><strong>Who wrote it, and can you read it?</strong> Prefer official servers from the vendor whose service it wraps, or open-source code you've skimmed. Pin a version rather than <code>@latest</code> once it works.</li>
+  <li><strong>What can it reach?</strong> Give it only the environment variables it needs, a filesystem server only the folder it needs, and an API key with the narrowest scope the service offers.</li>
+  <li><strong>What can its output make the model do?</strong> A fetched web page or a crafted tool description can contain instructions aimed at your model (prompt injection). Keep powerful tools, such as sending email or spending money, away from agents that read untrusted content, or put a human approval step in front of them.</li>
+  <li><strong>Can you limit the tools it exposes?</strong> Most clients can filter. In the Agents SDK: <code>tool_filter=create_static_tool_filter(allowed_tool_names=["tavily_search"])</code>.</li>
+</ul>
+
+<h2>Context engineering with MCP</h2>
+<p>Prompt engineering is about the words of your instructions; <strong>context engineering</strong> is about everything else the model sees when it decides: memory, retrieved documents, tool results and live data. MCP servers are a clean way to supply each kind.</p>
+<figure class="code"><figcaption>Four context sources, as server parameters</figcaption><pre><code class="hl-py">memory = {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"],
+          "env": {"MEMORY_FILE_PATH": os.path.abspath("memory/memory.json")}}      # a knowledge graph
+
+search = {"command": "npx", "args": ["-y", "tavily-mcp@latest"],
+          "env": {"TAVILY_API_KEY": os.getenv("TAVILY_API_KEY")}}                   # web search for agents
+
+knowledge = {"command": "uvx", "args": ["mcp-server-qdrant"],
+             "env": {"QDRANT_LOCAL_PATH": "memory/qdrant", "COLLECTION_NAME": "knowledge"}}  # vector store
+
+market = {"command": "uv", "args": ["run", "market_server.py"]}                  # your own live-data server</code></pre></figure>
+<div class="tbl"><table>
+<thead><tr><th>Source</th><th>What the agent gets</th><th>Try</th></tr></thead>
+<tbody>
+<tr><td>Memory</td><td>Entities, observations and relations it can store and search across runs</td><td>Tell it about yourself, end the program, ask in a new run what it knows</td></tr>
+<tr><td>Search</td><td>Current information with sources</td><td>Ask about this week's news on a company, with the date in the prompt</td></tr>
+<tr><td>Agentic RAG</td><td>A vector store it fills and queries itself, with local embeddings</td><td>Research a topic with search + store, then answer with only the store connected</td></tr>
+<tr><td>Integration</td><td>Live data from a service, such as share prices</td><td>Wrap a market-data API (or a simulator) as a server with a <code>get_share_price</code> tool</td></tr>
+</tbody></table></div>
+<p>Agentic RAG turns classic RAG around: instead of you loading documents up front, the agent decides what's worth keeping as it works and stores it, and retrieval is just another tool it chooses to use. Connect the memory server to the capstone traders next module and they'll remember what they learned about each company.</p>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>MCP standardizes how agents reach tools, resources and prompts; hosts hold one client per server.</li>
+  <li>stdio servers are local subprocesses with your permissions; Streamable HTTP servers are remote.</li>
+  <li>A server is decorated functions. SDK 2.x calls the class <code>MCPServer</code>; 1.x called it <code>FastMCP</code>.</li>
+  <li>Treat third-party servers as code you're running: check the source, scope access, filter tools, beware injected instructions.</li>
+  <li>Memory, search, retrieval and live data are all context, and MCP is a clean way to supply each.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">Your agent fails with a timeout the first time it starts an <code>npx</code> server, then works the second time. What's going on?</p>
+<ol><li><button>The server is rate limited</button></li><li><button>The first run downloads the package, which takes longer than the default session timeout</button></li><li><button>Node must be restarted</button></li><li><button>stdio servers only work on the second try</button></li></ol>
+<p class="q-why">Raise <code>client_session_timeout_seconds</code> (to 60, say) for servers launched with <code>npx</code> or <code>uvx</code>.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">An old server fails with <code>ModuleNotFoundError: No module named 'mcp.server.fastmcp'</code>. Why?</p>
+<ol><li><button>FastMCP was never part of the SDK</button></li><li><button>The server needs Node</button></li><li><button>The filesystem server isn't running</button></li><li><button>It was written for MCP SDK 1.x, and your environment installed 2.x, where the class is <code>MCPServer</code></button></li></ol>
+<p class="q-why">Pin <code>mcp&lt;2</code> for that server, or update its import.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">An agent reads web pages and can also send email. Which risk does that combination create?</p>
+<ol><li><button>A page could contain instructions that trick the model into sending email you didn't intend</button></li><li><button>Email servers block agents</button></li><li><button>Web pages use too many tokens</button></li><li><button>None, if the model is large enough</button></li></ol>
+<p class="q-why">Untrusted input plus a powerful tool is the classic prompt-injection setup. Separate them, or gate the powerful tool behind approval.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w7)"><h2>Exercise: a server for your own data</h2>
+<p>Write an MCP server over something you use: a folder of notes, a SQLite database, or an internal API you have access to. Give it two read tools and one write tool, plus a resource. Connect it to Claude Desktop, Cursor or another MCP host as well as your own agent, and confirm the same server works in both. Then run it over Streamable HTTP with <code>mcp.run(transport="streamable-http", port=9000)</code> and connect with <code>MCPServerStreamableHttp</code>.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://modelcontextprotocol.io/">Model Context Protocol</a> (specification and concepts)</li>
+  <li><a href="https://py.sdk.modelcontextprotocol.io/migration/">MCP Python SDK: v1 to v2 migration guide</a></li>
+  <li><a href="https://openai.github.io/openai-agents-python/mcp/">MCP in the OpenAI Agents SDK</a></li>
+  <li><a href="https://github.com/modelcontextprotocol/servers">Reference servers</a> (filesystem, fetch, memory and more)</li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/6_mcp">Week 6 reference implementation</a> — ed-donner/agents</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

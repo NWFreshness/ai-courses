@@ -1,0 +1,256 @@
+
+<section class="module" id="m3" data-title="OpenAI Agents SDK" data-wire="var(--w3)" data-group="Weeks 2–5: Frameworks">
+<div class="wire-band" style="--wire:var(--w3)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 2 · Module 3 of 9</p>
+  <h1>The OpenAI Agents SDK</h1>
+  <p class="lede">Your first framework is also the lightest. The OpenAI Agents SDK gives you agents, a runner that does the loop, tools from plain functions, sessions, tracing and guardrails, and gets out of the way. It works with other providers' models too. You'll use it to build a sales team with a manager, and a research agent that plans, searches and writes.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w3)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Create agents, run them with <code>Runner</code>, stream their output and read their traces.</li>
+    <li>Turn functions and whole agents into tools, and choose between tools and handoffs.</li>
+    <li>Get validated structured output, and plug in models from other providers.</li>
+    <li>Add input and output guardrails, and know exactly when they run.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w3)">
+  <h2>Projects: a sales team, then a research agent</h2>
+  <ol>
+    <li>Three writer agents, each with a different style, draft cold emails for a fictional product in parallel; a picker chooses the best.</li>
+    <li>Rebuild it with a <strong>manager agent</strong> that calls the writers as tools and sends the winner with a real email tool.</li>
+    <li>Add an emailer agent as a handoff, run writers on models from other providers, and add a guardrail that blocks requests naming a real person.</li>
+    <li>Build a deep-research agent: a planner with structured output, parallel web searches, a writer that returns a report object, and an emailer, all orchestrated by code.</li>
+    <li>Put the research agent behind a Gradio UI that streams its progress.</li>
+  </ol>
+  <p class="cost">Cost: cents for the sales team. Each research run with a small model and five hosted web searches costs roughly ten to twenty cents; hosted search is billed per call on top of tokens.</p>
+</div>
+
+<h2>Agents, runners and traces</h2>
+<p>Install it with <code>uv add openai-agents</code> and import from <code>agents</code>. (Don't run <code>pip install agents</code>: that's an unrelated, older package.) An <code>Agent</code> is configuration: a name, instructions, a model, and optionally tools. <code>Runner.run</code> executes the loop you wrote in Module 2 and returns a result whose <code>final_output</code> is the answer.</p>
+<figure class="code"><figcaption>hello_agent.py</figcaption><pre><code class="hl-py">import asyncio
+from dotenv import load_dotenv
+from agents import Agent, Runner, trace
+
+load_dotenv(override=True)
+agent = Agent(name="Jokester", instructions="You are a joke teller.", model="gpt-5.4-mini")
+
+async def main():
+    with trace("Telling a joke"):
+        result = await Runner.run(agent, "Tell a joke about autonomous AI agents")
+    print(result.final_output)
+
+asyncio.run(main())</code></pre></figure>
+<p>Every run is traced automatically to OpenAI's trace viewer at <a href="https://platform.openai.com/traces">platform.openai.com/traces</a>, and <code>trace("…")</code> groups several runs under one name. Open it after each example: you'll see every model call, tool call and handoff with its timing, which is the fastest way to understand what an agent actually did.</p>
+<p>For streaming, <code>Runner.run_streamed</code> returns immediately; iterate over <code>result.stream_events()</code> and print text deltas as they arrive (events of type <code>raw_response_event</code> whose <code>data</code> is a <code>ResponseTextDeltaEvent</code>).</p>
+
+<h2>Tools from functions</h2>
+<figure class="code"><figcaption>The decorator writes the schema for you</figcaption><pre><code class="hl-py">from agents import function_tool
+from notify import push
+
+@function_tool
+def push_tool(message: str) -> str:
+    """Send the given message to the user as a push notification."""
+    return push(message)
+
+notifier = Agent(name="Notifier", instructions="You notify the user of things.",
+                 tools=[push_tool], model="gpt-5.4-mini")</code></pre></figure>
+<p><code>@function_tool</code> reads the function name, type hints and docstring (including an <code>Args:</code> section) and builds the JSON Schema from Module 2. That's the whole reason to use a framework at this level: the boilerplate you wrote by hand is now one line. Sync and async functions both work.</p>
+
+<h2>Memory with sessions</h2>
+<p>Each <code>Runner.run</code> starts fresh. To carry a conversation across calls, pass a session, which stores the history and replays it each time.</p>
+<figure class="code"><figcaption>A remembered conversation</figcaption><pre><code class="hl-py">from agents import SQLiteSession
+
+session = SQLiteSession("user-42", "conversations.db")      # omit the file for in-memory
+await Runner.run(agent, "Hi, my name is Priya.", session=session)
+result = await Runner.run(agent, "What's my name?", session=session)
+print(result.final_output)                                   # it knows</code></pre></figure>
+
+<h2>Orchestrating agents: by code, as tools, or by handoff</h2>
+<p>With several agents, someone has to decide who does what. The SDK supports three styles, and choosing well matters more than anything else in this module.</p>
+<figure class="code"><figcaption>sales.py, version 1: orchestrated by code</figcaption><pre><code class="hl-py">styles = {
+    "professional": "You write professional, serious cold emails.",
+    "witty": "You write witty, engaging cold emails that are likely to get a reply.",
+    "concise": "You write concise, to-the-point cold emails.",
+}
+PRODUCT = "You are a sales agent for Ledgerline, an AI bookkeeping service for small accounting firms. "
+writers = {k: Agent(name=f"{k} writer", instructions=PRODUCT + v, model="gpt-5.4-mini") for k, v in styles.items()}
+picker = Agent(name="Picker", model="gpt-5.4-mini",
+               instructions="Pick the cold email you would most likely reply to. Return it unchanged.")
+
+async def best_email() -> str:
+    with trace("Sales emails, picked by code"):
+        drafts = await asyncio.gather(*(Runner.run(w, "Write a cold sales email") for w in writers.values()))
+        joined = "\n\n---\n\n".join(d.final_output for d in drafts)
+        best = await Runner.run(picker, f"Cold emails:\n\n{joined}")
+    return best.final_output</code></pre></figure>
+<figure class="code"><figcaption>sales.py, version 2: a manager that uses agents as tools</figcaption><pre><code class="hl-py">@function_tool
+def send_email(subject: str, html_body: str) -> str:
+    """Send an email with this subject and HTML body to the sales prospect list."""
+    return send_to_myself(subject, html_body)        # your Module 0 SMTP helper, to yourself only
+
+writer_tools = [w.as_tool(tool_name=f"write_{k}_email", tool_description="Write a cold sales email")
+                for k, w in writers.items()]
+manager = Agent(name="Sales manager", model="gpt-5.4-mini", tools=writer_tools + [send_email],
+    instructions="""You pick the best cold sales email. Use all three writer tools to get three
+drafts. Choose the single best one, and send only that one with send_email.
+Never write an email yourself.""")
+
+with trace("Sales manager"):
+    await Runner.run(manager, "Send a cold sales email addressed to 'Dear managing partner'")</code></pre></figure>
+<div class="tbl"><table>
+<thead><tr><th>Style</th><th>How</th><th>Who's in control</th><th>Use it when</th></tr></thead>
+<tbody>
+<tr><td>Code</td><td>Separate <code>Runner.run</code> calls, <code>asyncio.gather</code></td><td>You</td><td>The steps are known. Most reliable and easiest to test</td></tr>
+<tr><td>Agents as tools</td><td><code>agent.as_tool(...)</code></td><td>The calling agent, which gets each result back</td><td>A coordinator should choose which specialists to consult, and stay in charge</td></tr>
+<tr><td>Handoffs</td><td><code>Agent(handoffs=[other])</code></td><td>Passes to the other agent, which continues the conversation</td><td>Triage: route a user to the right specialist, which then owns the reply</td></tr>
+</tbody></table></div>
+<p>A handoff is one-way: the receiving agent sees the conversation and takes over, and the first agent doesn't get control back. Give each handoff target a <code>handoff_description</code> so the model knows when to use it. Many practitioners find handoffs harder to reason about than tools, and start with code, moving to tools only where the model's judgment adds something.</p>
+
+<div class="note try"><h4>Force a tool call</h4>
+<p>If an agent sometimes answers from memory instead of using its tool, set <code>model_settings=ModelSettings(tool_choice="required")</code>. The research agent's searcher below uses this so it always searches.</p></div>
+
+<h2>Other providers' models</h2>
+<p>Agents can run on any OpenAI-compatible endpoint. Wrap an <code>AsyncOpenAI</code> client in <code>OpenAIChatCompletionsModel</code> and pass that as the model. Tracing still uploads to OpenAI, so keep an <code>OPENAI_API_KEY</code> set, or turn tracing off with <code>set_tracing_disabled(True)</code>.</p>
+<figure class="code"><figcaption>A writer on a different model</figcaption><pre><code class="hl-py">import os
+from openai import AsyncOpenAI
+from agents import OpenAIChatCompletionsModel
+
+openrouter = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY"))
+kimi = OpenAIChatCompletionsModel(model="moonshotai/kimi-k2.6", openai_client=openrouter)
+witty = Agent(name="witty writer", instructions=PRODUCT + styles["witty"], model=kimi)</code></pre></figure>
+
+<h2>Structured outputs</h2>
+<p>Set <code>output_type</code> to a Pydantic model and <code>final_output</code> becomes an instance of it, validated. Use <code>Field(description=...)</code>: the descriptions go to the model and do as much as the instructions.</p>
+<figure class="code"><figcaption>An email reviewer that returns data</figcaption><pre><code class="hl-py">from pydantic import BaseModel, Field
+
+class EmailReview(BaseModel):
+    is_professional: bool = Field(description="True if the email is professional in tone")
+    has_placeholders: bool = Field(description="True if it contains placeholders like [Name]")
+
+reviewer = Agent(name="Reviewer", instructions="You review sales emails.",
+                 output_type=EmailReview, model="gpt-5.4-mini")
+review = (await Runner.run(reviewer, email)).final_output
+if review.has_placeholders or not review.is_professional:
+    print("Not sending this one.")</code></pre></figure>
+
+<h2>Guardrails</h2>
+<p>A guardrail is a check that runs alongside an agent and can stop the run by tripping a wire. Input guardrails inspect the request; output guardrails inspect the answer. The check can be plain code or another agent.</p>
+<figure class="code"><figcaption>Block requests that name a real person</figcaption><pre><code class="hl-py">from agents import input_guardrail, GuardrailFunctionOutput, InputGuardrailTripwireTriggered
+
+class NameCheck(BaseModel):
+    names_a_person: bool
+    name: str
+
+name_checker = Agent(name="Name check", output_type=NameCheck, model="gpt-5.4-mini",
+                     instructions="Does the request mention a specific person's name?")
+
+@input_guardrail
+async def no_personal_names(ctx, agent, message):
+    check = (await Runner.run(name_checker, message, context=ctx.context)).final_output
+    return GuardrailFunctionOutput(output_info={"check": check}, tripwire_triggered=check.names_a_person)
+
+careful_manager = Agent(name="Careful sales manager", instructions=manager.instructions, model="gpt-5.4-mini",
+                        tools=manager.tools, input_guardrails=[no_personal_names])
+try:
+    await Runner.run(careful_manager, "Send a cold email to Maria Gonzales at Gonzales and Partners")
+except InputGuardrailTripwireTriggered:
+    print("Blocked: the request named a person.")</code></pre></figure>
+<div class="note pitfall"><h4>Where guardrails actually run</h4>
+<p>Input guardrails run only on the <em>first</em> agent in a run, on the initial input. Output guardrails run only on the <em>last</em> agent's final output. Put an input guardrail on an agent that's reached by handoff, or called as a tool, and it never fires. If you need a check at a particular step, the plain alternative is often clearer: a separate <code>Runner.run</code> of a checker agent, or a check inside the tool itself.</p></div>
+
+<h2>Project 2: a deep-research agent</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 220" role="img" aria-label="Deep research. A planner agent turns the query into a list of searches. Several search agents run in parallel, each summarizing one search. A writer agent turns the summaries into a structured report, and an emailer sends it. Python code calls each agent in turn.">
+  <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+  <rect x="10" y="84" width="80" height="50" rx="6" class="box"/><text x="50" y="114" text-anchor="middle" style="font-size:13px;font-weight:600">query</text>
+  <rect x="120" y="84" width="110" height="50" rx="6" fill="color-mix(in srgb,var(--w3) 18%,var(--paper))" stroke="var(--w3)" stroke-width="2"/><text x="175" y="106" text-anchor="middle" style="font-size:13px;font-weight:600">planner</text><text x="175" y="123" text-anchor="middle" class="muted" style="font-size:11px">→ WebSearchPlan</text>
+  <rect x="270" y="30" width="120" height="34" rx="6" fill="color-mix(in srgb,var(--w3) 18%,var(--paper))" stroke="var(--w3)" stroke-width="2"/><text x="330" y="52" text-anchor="middle" style="font-size:12px">search + summarize</text>
+  <rect x="270" y="92" width="120" height="34" rx="6" fill="color-mix(in srgb,var(--w3) 18%,var(--paper))" stroke="var(--w3)" stroke-width="2"/><text x="330" y="114" text-anchor="middle" style="font-size:12px">search + summarize</text>
+  <rect x="270" y="154" width="120" height="34" rx="6" fill="color-mix(in srgb,var(--w3) 18%,var(--paper))" stroke="var(--w3)" stroke-width="2"/><text x="330" y="176" text-anchor="middle" style="font-size:12px">search + summarize</text>
+  <rect x="430" y="84" width="110" height="50" rx="6" fill="color-mix(in srgb,var(--w3) 18%,var(--paper))" stroke="var(--w3)" stroke-width="2"/><text x="485" y="106" text-anchor="middle" style="font-size:13px;font-weight:600">writer</text><text x="485" y="123" text-anchor="middle" class="muted" style="font-size:11px">→ Report</text>
+  <rect x="570" y="84" width="100" height="50" rx="6" fill="color-mix(in srgb,var(--w3) 18%,var(--paper))" stroke="var(--w3)" stroke-width="2"/><text x="620" y="106" text-anchor="middle" style="font-size:13px;font-weight:600">emailer</text><text x="620" y="123" text-anchor="middle" class="muted" style="font-size:11px">send_email</text>
+  <path d="M90 109 H120" class="ln" marker-end="url(#a3)"/><path d="M540 109 H570" class="ln" marker-end="url(#a3)"/>
+  <path d="M230 109 C250 109 250 47 270 47 M230 109 H270 M230 109 C250 109 250 171 270 171 M390 47 C410 47 410 109 430 109 M390 109 H430 M390 171 C410 171 410 109 430 109" class="ln"/>
+  <text x="330" y="212" text-anchor="middle" class="muted" style="font-size:11px">asyncio.gather: searches run at once</text>
+  <text x="340" y="16" text-anchor="middle" class="muted" style="font-size:11px">Python calls each agent in turn; structured outputs carry data between them</text>
+  <path id="p3a" d="M50 109 H175 C250 109 250 47 330 47 C410 47 410 109 485 109 H620" fill="none"/>
+  <g class="live"><circle r="5" fill="var(--w3)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="4.5s" repeatCount="indefinite"><mpath href="#p3a"/></animateMotion></circle></g>
+</svg>
+<figcaption>Orchestrated by code: each step is an agent with one job and a typed output.</figcaption>
+</figure>
+<figure class="code"><figcaption>research.py</figcaption><pre><code class="hl-py">import asyncio
+from agents import Agent, Runner, WebSearchTool, ModelSettings, trace
+from pydantic import BaseModel, Field
+
+class WebSearchItem(BaseModel):
+    reason: str = Field(description="Why this search will help answer the query")
+    query: str = Field(description="The search term to use")
+
+class WebSearchPlan(BaseModel):
+    searches: list[WebSearchItem]
+
+class Report(BaseModel):
+    short_summary: str = Field(description="A two or three sentence summary of the findings")
+    markdown_report: str = Field(description="The full report, in markdown")
+    follow_up_questions: list[str] = Field(description="Topics worth researching next")
+
+planner = Agent(name="Planner", model="gpt-5.4-mini", output_type=WebSearchPlan,
+    instructions="You are a research assistant. Given a query, plan 5 web searches that best answer it.")
+searcher = Agent(name="Searcher", model="gpt-5.4-mini",
+    tools=[WebSearchTool(search_context_size="low")],
+    model_settings=ModelSettings(tool_choice="required"),
+    instructions="Search the web for the given term and write a concise summary of the results in "
+                 "2-3 paragraphs and under 300 words. Capture the main points; no commentary.")
+writer = Agent(name="Writer", model="gpt-5.4-mini", output_type=Report,
+    instructions="You are a senior researcher. Given a query and search summaries, outline a report, "
+                 "then write it in markdown: detailed, at least 1,000 words, citing what you found.")
+
+async def research(query: str) -> Report:
+    with trace("Research"):
+        plan = (await Runner.run(planner, f"Query: {query}")).final_output
+        results = await asyncio.gather(*(
+            Runner.run(searcher, f"Search term: {s.query}\nReason: {s.reason}") for s in plan.searches))
+        summaries = "\n\n".join(r.final_output for r in results)
+        report = (await Runner.run(writer, f"Query: {query}\n\nSearch summaries:\n{summaries}")).final_output
+    return report</code></pre></figure>
+<p>Add an emailer agent with your <code>send_email</code> tool that turns <code>report.markdown_report</code> into a well-presented HTML email. Then make <code>research</code> an async generator that <code>yield</code>s status lines ("Planning…", "Searching 5 terms…", "Writing…") followed by the report, and hand it to a <code>gr.Blocks</code> UI with a textbox, a button and a <code>gr.Markdown</code> output; Gradio streams whatever an async generator yields.</p>
+
+<div class="note field"><h4>Why orchestrate this one by code</h4>
+<p>You could give one agent all these tools and say "research this". It works, until it decides two searches are enough, or forgets to email. Fixed steps in code, each with a typed output, make the pipeline predictable and every stage testable on its own. Save model-driven orchestration for the parts where judgment genuinely helps.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li><code>Agent</code> is configuration; <code>Runner.run</code> is the loop; traces show what happened.</li>
+  <li><code>@function_tool</code> turns a typed, documented function into a tool; <code>as_tool</code> does the same for an agent.</li>
+  <li>Orchestrate by code where you can, with agents as tools where judgment helps, and with handoffs for triage.</li>
+  <li><code>output_type</code> gives validated objects; guardrails run only at the start and end of a run.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="3"><p class="q-prompt">You put an input guardrail on an agent that the triage agent hands off to. When does it run?</p>
+<ol><li><button>Every time the agent is reached</button></li><li><button>Only when the handoff includes the original input</button></li><li><button>After the agent's final answer</button></li><li><button>Never: input guardrails run only on the first agent of a run</button></li></ol>
+<p class="q-why">Input guardrails check the initial input to the first agent. Put the check on the triage agent, or inside the tools, instead.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">A manager agent should consult three writers, compare their drafts and send one. Which fits best?</p>
+<ol><li><button>Handoffs to each writer</button></li><li><button>The writers as tools, so each draft comes back to the manager</button></li><li><button>One agent with three sets of instructions</button></li><li><button>A guardrail per writer</button></li></ol>
+<p class="q-why">With a handoff the manager would lose control after the first writer. Tools return results to the caller, which stays in charge.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">The searcher sometimes answers from memory instead of searching. What's the direct fix?</p>
+<ol><li><button><code>model_settings=ModelSettings(tool_choice="required")</code></button></li><li><button>A longer instruction in capitals</button></li><li><button>An output guardrail</button></li><li><button>A different trace name</button></li></ol>
+<p class="q-why">Requiring a tool call forces the model to use a tool on that turn.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w3)"><h2>Exercise: research that asks first</h2>
+<p>Before planning, have a clarifier agent ask the user three questions about the query (scope, audience, depth) through the Gradio UI, then pass the answers to the planner. Add an output guardrail on the writer that trips if the report is under 800 words, and run the research on a non-OpenAI model for the writer. Compare traces to see what each change cost in time and tokens.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://openai.github.io/openai-agents-python/">OpenAI Agents SDK documentation</a> (agents, tools, handoffs, guardrails, sessions, tracing)</li>
+  <li><a href="https://openai.github.io/openai-agents-python/guardrails/">Guardrails</a> — OpenAI Agents SDK</li>
+  <li><a href="https://openai.github.io/openai-agents-python/models/">Using other models</a> — OpenAI Agents SDK</li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/2_openai">Week 2 reference implementation</a> — ed-donner/agents (see <code>deep_research/</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

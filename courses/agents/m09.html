@@ -1,0 +1,213 @@
+
+<section class="module" id="m8" data-title="Capstone: an autonomous trading floor" data-wire="var(--w8)" data-group="Week 6: MCP">
+<div class="wire-band" style="--wire:var(--w8)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 6 · Module 8 of 9 · capstone</p>
+  <h1>Capstone: an autonomous trading floor</h1>
+  <p class="lede">Everything comes together in one system that runs without you. Four trader agents, each with its own strategy and model, manage simulated portfolios. Each calls a researcher agent as a tool, and every capability, from accounts to market data to memory, arrives through an MCP server. A scheduler wakes them up, a custom trace processor logs what they do, and a dashboard shows the floor live.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w8)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Design a multi-agent system where agents, tools and data are separated by MCP servers.</li>
+    <li>Wrap an agent with its own servers as a tool for another agent.</li>
+    <li>Run agents autonomously on a schedule, in parallel, with bounded turns and isolated failures.</li>
+    <li>Capture agent activity with a custom trace processor and show it in a live dashboard.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w8)">
+  <h2>Project: four traders, one researcher, six servers</h2>
+  <ol>
+    <li>Finish the accounts module from Module 7 so it records transactions, a strategy and a portfolio value over time, and serve it with tools and two resources (the account report and the strategy).</li>
+    <li>Write a market-data server: a simulator that returns plausible prices, or a wrapper around a real market-data API if you have a key. Add a push-notification server.</li>
+    <li>Build the researcher agent with fetch, search and memory servers, and turn it into a tool.</li>
+    <li>Build a <code>Trader</code> class: four named traders with different strategies (and, optionally, different models), each running with its servers inside one trace.</li>
+    <li>Add a scheduler that runs all four every N minutes with <code>asyncio.gather</code>, a trace processor that writes their activity to SQLite, and a Gradio dashboard that refreshes from it.</li>
+  </ol>
+  <p class="cost">Cost: with a small model, each trader's run is a few cents; four traders every hour for a day comes to a few dollars. Start with long intervals and watch the usage page. All trading is simulated: no real money, and nothing here is investment advice.</p>
+</div>
+
+<h2>The architecture</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 312" role="img" aria-label="Four trader agents each use three MCP servers: accounts, market data and push notifications. Each also calls a researcher agent as a tool; the researcher uses fetch, web search and memory servers. A scheduler runs the traders, and a trace processor writes their activity to a database read by the dashboard.">
+  <defs><marker id="a8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+  <rect x="20" y="20" width="110" height="40" rx="6" class="box"/><text x="75" y="45" text-anchor="middle" style="font-size:12px;font-weight:600">scheduler</text>
+  <g style="font-size:12px">
+  <rect x="190" y="14" width="120" height="30" rx="5" fill="color-mix(in srgb,var(--w8) 18%,var(--paper))" stroke="var(--w8)" stroke-width="2"/><text x="250" y="34" text-anchor="middle">Warren · patient</text>
+  <rect x="190" y="52" width="120" height="30" rx="5" fill="color-mix(in srgb,var(--w8) 18%,var(--paper))" stroke="var(--w8)" stroke-width="2"/><text x="250" y="72" text-anchor="middle">George · bold</text>
+  <rect x="190" y="90" width="120" height="30" rx="5" fill="color-mix(in srgb,var(--w8) 18%,var(--paper))" stroke="var(--w8)" stroke-width="2"/><text x="250" y="110" text-anchor="middle">Ray · systematic</text>
+  <rect x="190" y="128" width="120" height="30" rx="5" fill="color-mix(in srgb,var(--w8) 18%,var(--paper))" stroke="var(--w8)" stroke-width="2"/><text x="250" y="148" text-anchor="middle">Cathie · growth</text>
+  </g>
+  <path d="M130 40 C160 40 160 29 190 29 M130 40 C160 40 160 67 190 67 M130 40 C160 40 160 105 190 105 M130 40 C160 40 160 143 190 143" class="ln"/>
+  <text x="410" y="26" style="font-size:12px;font-weight:700">trader's servers</text>
+  <rect x="410" y="34" width="90" height="28" rx="5" class="box"/><text x="455" y="53" text-anchor="middle" style="font-size:11px">accounts</text>
+  <rect x="410" y="68" width="90" height="28" rx="5" class="box"/><text x="455" y="87" text-anchor="middle" style="font-size:11px">market data</text>
+  <rect x="410" y="102" width="90" height="28" rx="5" class="box"/><text x="455" y="121" text-anchor="middle" style="font-size:11px">push</text>
+  <path d="M310 67 C360 67 360 48 410 48 M310 67 C360 67 360 82 410 82 M310 67 C360 67 360 116 410 116" class="ln"/>
+  <rect x="190" y="200" width="120" height="44" rx="6" fill="color-mix(in srgb,var(--w7) 18%,var(--paper))" stroke="var(--w7)" stroke-width="2"/><text x="250" y="220" text-anchor="middle" style="font-size:12px;font-weight:600">researcher</text><text x="250" y="236" text-anchor="middle" class="muted" style="font-size:11px">agent as a tool</text>
+  <path d="M250 158 V200" class="ln" marker-end="url(#a8)"/>
+  <text x="410" y="182" style="font-size:12px;font-weight:700">researcher's servers</text>
+  <rect x="410" y="190" width="70" height="28" rx="5" class="box"/><text x="445" y="209" text-anchor="middle" style="font-size:11px">fetch</text>
+  <rect x="488" y="190" width="70" height="28" rx="5" class="box"/><text x="523" y="209" text-anchor="middle" style="font-size:11px">search</text>
+  <rect x="566" y="190" width="80" height="28" rx="5" class="box"/><text x="606" y="209" text-anchor="middle" style="font-size:11px">memory</text>
+  <path d="M310 222 C360 222 370 204 410 204" class="ln"/>
+  <rect x="20" y="236" width="110" height="40" rx="6" class="box"/><text x="75" y="255" text-anchor="middle" style="font-size:12px;font-weight:600">trace log</text><text x="75" y="269" text-anchor="middle" class="muted" style="font-size:10px">SQLite</text>
+  <rect x="540" y="246" width="120" height="36" rx="6" class="box"/><text x="600" y="269" text-anchor="middle" style="font-size:12px;font-weight:600">dashboard</text>
+  <path d="M190 143 C150 143 110 200 90 236" class="ln" stroke-dasharray="4 3" marker-end="url(#a8)"/>
+  <path d="M130 268 C300 290 420 290 540 268" class="ln" stroke-dasharray="4 3" marker-end="url(#a8)"/>
+  <text x="335" y="304" text-anchor="middle" class="muted" style="font-size:11px">dashboard reads logs and accounts</text>
+  <path id="p8a" d="M130 40 C160 40 160 67 250 67 C360 67 360 48 455 48" fill="none"/>
+  <g class="live"><circle r="5" fill="var(--w8)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="3s" repeatCount="indefinite"><mpath href="#p8a"/></animateMotion></circle></g>
+</svg>
+<figcaption>Agents decide; MCP servers do. Every server can be tested, swapped or reused on its own, and the traders share none of their state except through the accounts server.</figcaption>
+</figure>
+
+<h2>The researcher, as a tool</h2>
+<figure class="code"><figcaption>traders.py, part 1</figcaption><pre><code class="hl-py">from agents import Agent, Runner, trace, gen_trace_id
+from agents.mcp import MCPServerStdio, create_static_tool_filter
+from contextlib import AsyncExitStack
+
+TIMEOUT = 120
+def server(params: dict, **kw) -> MCPServerStdio:
+    return MCPServerStdio(params=params, client_session_timeout_seconds=TIMEOUT, **kw)
+
+def trader_servers() -> list[MCPServerStdio]:
+    return [server({"command": "uv", "args": ["run", "accounts_server.py"]}),
+            server({"command": "uv", "args": ["run", "market_server.py"]}),
+            server({"command": "uv", "args": ["run", "push_server.py"]})]
+
+def researcher_servers(name: str) -> list[MCPServerStdio]:
+    return [server({"command": "uvx", "args": ["mcp-server-fetch"]}),
+            server({"command": "npx", "args": ["-y", "tavily-mcp@latest"], "env": {"TAVILY_API_KEY": TAVILY_KEY}},
+                   tool_filter=create_static_tool_filter(allowed_tool_names=["tavily_search"])),
+            server({"command": "npx", "args": ["-y", "@modelcontextprotocol/server-memory"],
+                    "env": {"MEMORY_FILE_PATH": f"memory/{name.lower()}.json"}})]   # one memory per trader
+
+RESEARCHER = """You are a financial researcher. Search the web for financial news and trading
+opportunities, fetch pages for detail, and summarize your findings. Use your knowledge graph to
+store what you learn about companies and markets, and recall it before searching again."""
+
+def researcher_tool(servers, model):
+    researcher = Agent(name="Researcher", instructions=RESEARCHER, model=model, mcp_servers=servers)
+    return researcher.as_tool(tool_name="Researcher",
+        tool_description="Researches news and opportunities online, generally or about a stock you name.")</code></pre></figure>
+<p>Each trader gets its own memory file, so Warren's notes about a company build up over many runs and don't leak into Cathie's. Filtering the search server down to plain search keeps the researcher from reaching for heavier, slower crawl tools.</p>
+
+<h2>The trader</h2>
+<figure class="code"><figcaption>traders.py, part 2</figcaption><pre><code class="hl-py">OWNERS: dict[str, str] = {}          # trace_id -> trader name, read by the trace processor
+MAX_TURNS = 30
+
+class Trader:
+    def __init__(self, name: str, model: str = "gpt-5.4-mini"):
+        self.name, self.model, self.trade_next = name, model, True
+
+    def instructions(self) -> str:
+        return (f"You are {self.name}, a trader on the stock market. Your account is under your name, {self.name}. "
+                "Manage your portfolio according to your strategy. Use the Researcher tool for news and ideas, "
+                "the market tools for prices, and the account tools to trade. After trading, send a short push "
+                "notification summarizing what you did, then reply with a two-sentence appraisal of your portfolio.")
+
+    async def run_once(self, trader_srv, research_srv):
+        agent = Agent(name=self.name, instructions=self.instructions(), model=self.model,
+                      tools=[researcher_tool(research_srv, self.model)], mcp_servers=trader_srv)
+        task = ("Look for new opportunities and trade if they fit your strategy." if self.trade_next
+                else "Review your holdings and rebalance if needed. You may also revise your strategy.")
+        account = await read_resource(f"accounts://accounts_server/{self.name}")   # via an MCP client
+        await Runner.run(agent, f"{task}\n\nYour account:\n{account}", max_turns=MAX_TURNS)
+
+    async def run(self):
+        trace_id = gen_trace_id(); OWNERS[trace_id] = self.name
+        try:
+            with trace(f"{self.name} {'trading' if self.trade_next else 'rebalancing'}", trace_id=trace_id):
+                async with AsyncExitStack() as stack:
+                    t = [await stack.enter_async_context(s) for s in trader_servers()]
+                    r = [await stack.enter_async_context(s) for s in researcher_servers(self.name)]
+                    await self.run_once(t, r)
+        except Exception as e:                       # one trader's failure must not stop the floor
+            print(f"{self.name} failed: {e}")
+        self.trade_next = not self.trade_next</code></pre></figure>
+<p><code>read_resource</code> is a small helper you write with the MCP client SDK: it starts the accounts server, opens a <code>ClientSession</code> and calls <code>read_resource</code> on the URI. <code>AsyncExitStack</code> opens a variable number of servers and guarantees they all close, even if the run fails. <code>max_turns</code> bounds each run. Alternating between trading and rebalancing gives the traders two different jobs to do, and the account's strategy text lives in the accounts server, where a trader can change it with a tool.</p>
+
+<h2>The floor, on a schedule</h2>
+<figure class="code"><figcaption>trading_floor.py</figcaption><pre><code class="hl-py">import asyncio
+from agents import add_trace_processor
+
+TRADERS = [Trader("Warren"), Trader("George"), Trader("Ray"), Trader("Cathie")]
+EVERY_MINUTES = 60
+
+async def main():
+    add_trace_processor(LogTracer())
+    while True:
+        if market_is_open() or RUN_WHEN_CLOSED:
+            await asyncio.gather(*(t.run() for t in TRADERS))
+        await asyncio.sleep(EVERY_MINUTES * 60)
+
+asyncio.run(main())</code></pre></figure>
+<p>Give each trader a different starting strategy in its account, written in plain language: Warren buys undervalued companies and holds them, George makes bold bets on macro events, Ray follows systematic rules about risk parity, Cathie buys disruptive innovation. To compare models rather than strategies, give each trader a different model through <code>OpenAIChatCompletionsModel</code>, as in Module 3.</p>
+
+<h2>Seeing it: a trace processor and a dashboard</h2>
+<p>The SDK sends traces to OpenAI's viewer, and it also lets you add your own processor that receives every trace and span as it starts and ends. Write those events to a database, and your dashboard can show each trader's activity live.</p>
+<figure class="code"><figcaption>tracers.py</figcaption><pre><code class="hl-py">from agents import TracingProcessor
+
+class LogTracer(TracingProcessor):
+    def _log(self, item, verb: str):
+        name = OWNERS.get(item.trace_id)
+        if not name:
+            return
+        data = getattr(item, "span_data", None)
+        kind = data.type if data else "trace"
+        detail = getattr(data, "name", None) or getattr(item, "name", "") or ""
+        write_log(name, kind, f"{verb} {kind} {detail}".strip())      # an INSERT into SQLite
+
+    def on_trace_start(self, trace): self._log(trace, "Started")
+    def on_trace_end(self, trace): self._log(trace, "Ended")
+    def on_span_start(self, span): self._log(span, "Started")
+    def on_span_end(self, span): self._log(span, "Ended")
+    def force_flush(self): pass
+    def shutdown(self): pass</code></pre></figure>
+<p>Span types tell you what happened: <code>agent</code>, <code>generation</code> (a model call), <code>function</code> (a tool call, including MCP tools), <code>mcp_tools</code> (listing a server's tools) and <code>handoff</code>. For the dashboard, a <code>gr.Blocks</code> page with one column per trader is enough: a line plot of portfolio value over time, tables of holdings and recent transactions, and a log panel, all refreshed by a <code>gr.Timer</code> every few seconds from the database. Run the floor and the dashboard as two separate processes that share only the database files.</p>
+
+<div class="note field"><h4>Autonomy changes what can go wrong</h4>
+<p>Nobody is watching a scheduled run. That's why the design bounds every run with <code>max_turns</code>, catches each trader's errors separately, keeps every capability behind a server you control, uses simulated money, and logs everything. Before giving an autonomous agent any real power, decide what it must never do, enforce that in the tools themselves (the accounts server refusing trades it can't afford, say), and add a human checkpoint for anything you couldn't undo.</p></div>
+
+<h2>Taking it further</h2>
+<ul>
+  <li><strong>A real front end.</strong> Put a small FastAPI app over the database (portfolio values, holdings, logs as JSON) and build a front end with Vite or any framework; the agents and servers don't change.</li>
+  <li><strong>A real market.</strong> Swap the simulator for a market-data provider's MCP server or API. Some publish official servers; check which MCP SDK version they need.</li>
+  <li><strong>Better research.</strong> Add a second researcher with a different search provider, or let traders share a common memory for market-wide facts while keeping their own for strategy.</li>
+</ul>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Separating agents (decisions) from MCP servers (capabilities) keeps a multi-agent system testable and changeable.</li>
+  <li>Agents with their own servers become tools for other agents through <code>as_tool</code>.</li>
+  <li>Autonomous runs need bounded turns, isolated failures, constraints enforced in tools, and logs.</li>
+  <li>A custom trace processor turns the SDK's tracing into data your own dashboard can show.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">Why does each trader get its own memory file?</p>
+<ol><li><button>The memory server can only hold one entity</button></li><li><button>To make runs faster</button></li><li><button>So each trader's learned notes build up separately and don't mix with the others'</button></li><li><button>MCP requires it</button></li></ol>
+<p class="q-why">Separate memories keep each agent's knowledge, and its mistakes, its own. Shared memory is a deliberate design choice, not a default.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Where should the rule "never spend more cash than the account holds" live?</p>
+<ol><li><button>In the accounts server's <code>buy_shares</code> tool, which refuses the trade</button></li><li><button>Only in the trader's instructions</button></li><li><button>In the dashboard</button></li><li><button>In the researcher's instructions</button></li></ol>
+<p class="q-why">Instructions can be ignored or misread; a tool that refuses an impossible trade can't be argued with.</p></div>
+<div class="q" data-correct="1"><p class="q-prompt">One trader's run raises an exception. What should happen to the other three?</p>
+<ol><li><button>They should stop too, to be safe</button></li><li><button>Nothing: each trader catches its own errors, so the others finish and the floor runs again next cycle</button></li><li><button>They should retry until the failed one succeeds</button></li><li><button><code>asyncio.gather</code> automatically restarts it</button></li></ol>
+<p class="q-why">By default an exception in one coroutine passed to <code>gather</code> propagates; catching inside each trader keeps failures isolated.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w8)"><h2>Exercise: a risk officer</h2>
+<p>Add a fifth agent that never trades: a risk officer who runs after the traders each cycle, reads every account through the accounts resources, and sends you a push notification if any portfolio has more than 40% in one stock or has lost more than 10% in a day. Give it read-only access by building its accounts server without the buy and sell tools. Then add an input to the dashboard that pauses any trader.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://openai.github.io/openai-agents-python/tracing/">Tracing, including custom processors</a> — OpenAI Agents SDK</li>
+  <li><a href="https://docs.python.org/3/library/contextlib.html#contextlib.AsyncExitStack">AsyncExitStack</a> — Python documentation</li>
+  <li><a href="https://www.gradio.app/guides/blocks-and-event-listeners">Blocks and event listeners</a> — Gradio</li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/6_mcp">Week 6 reference implementation</a> — ed-donner/agents (the autonomous traders, in <code>backend/</code>)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

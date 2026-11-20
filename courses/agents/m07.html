@@ -1,0 +1,265 @@
+
+<section class="module" id="m6" data-title="Five more frameworks" data-wire="var(--w6)" data-group="Weeks 2–5: Frameworks">
+<div class="wire-band" style="--wire:var(--w6)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 5 · Module 6 of 9</p>
+  <h1>Five more frameworks, one worker</h1>
+  <p class="lede">There are dozens of agent frameworks, and they rhyme. The fastest way to learn a new one is to build the same small thing in it: an agent, a run, some tools, an MCP server, and a loop toward a goal. This module does that five times on one shared task board, connects agents across frameworks with the A2A protocol, and ends with a team of those workers coordinated by an orchestrator agent.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w6)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Build the same tool-using, MCP-connected worker in Google ADK, Pydantic AI, Strands, Microsoft Agent Framework and Agno.</li>
+    <li>Map any new framework onto five questions: agent, run, tools, MCP, loop.</li>
+    <li>Expose an agent over A2A and call it from another agent.</li>
+    <li>Coordinate several workers through shared state, and choose a framework for a job.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w6)">
+  <h2>Project: one worker, five ways, then a team</h2>
+  <ol>
+    <li>Write <code>board.py</code>, a tiny SQLite task board of goals and steps that any framework can use.</li>
+    <li>In each framework, build a worker that reads the board, plans steps under its goal, does the work with files from a filesystem MCP server scoped to one folder, and ticks each step off. The test task: translate <code>notes.txt</code> into Spanish and write <code>spanish.txt</code>.</li>
+    <li>Expose the ADK worker as an A2A service and call it from a second agent.</li>
+    <li>Make each worker accept a task ID on the command line, then write an orchestrator agent that launches workers on different tasks, waits for them, checks their output, and sends one back to fix a problem.</li>
+  </ol>
+  <p class="cost">Cost: cents per worker run. ADK examples default to a Gemini model, which needs a free <code>GOOGLE_API_KEY</code>; every framework here can use OpenAI instead.</p>
+</div>
+
+<h2>The shared board</h2>
+<figure class="code"><figcaption>board.py</figcaption><pre><code class="hl-py">import os, sqlite3
+
+DB = os.environ.get("BOARD_PATH", "board.db")
+
+def _db() -> sqlite3.Connection:
+    con = sqlite3.connect(DB)
+    con.row_factory = sqlite3.Row
+    con.execute("""CREATE TABLE IF NOT EXISTS todos (
+        id INTEGER PRIMARY KEY, parent_id INTEGER, description TEXT,
+        status TEXT DEFAULT 'pending', result TEXT)""")
+    return con
+
+def add_goal(description: str) -> int:
+    with _db() as con:
+        return con.execute("INSERT INTO todos (description) VALUES (?)", (description,)).lastrowid
+
+def add_step(goal_id: int, description: str) -> int:
+    with _db() as con:
+        return con.execute("INSERT INTO todos (parent_id, description) VALUES (?, ?)",
+                           (goal_id, description)).lastrowid
+
+def list_todos() -> list[dict]:
+    with _db() as con:
+        return [dict(r) for r in con.execute("SELECT * FROM todos ORDER BY id")]
+
+def claim(todo_id: int) -> bool:
+    """Atomically move a todo from pending to in_progress. False if someone else got it first."""
+    with _db() as con:
+        return con.execute("UPDATE todos SET status='in_progress' WHERE id=? AND status='pending'",
+                           (todo_id,)).rowcount == 1
+
+def complete(todo_id: int, result: str) -> None:
+    with _db() as con:
+        con.execute("UPDATE todos SET status='done', result=? WHERE id=?", (result, todo_id))</code></pre></figure>
+<figure class="code"><figcaption>worker_tools.py: plain functions every framework can use</figcaption><pre><code class="hl-py">import board
+
+def show_todos() -> list[dict]:
+    """List every todo on the board. A goal has parent_id None; a step has its goal's id."""
+    return board.list_todos()
+
+def plan_steps(goal_id: int, steps: list[str]) -> dict:
+    """Break a goal into an ordered checklist of steps on the board."""
+    return {"goal_id": goal_id, "step_ids": [board.add_step(goal_id, s) for s in steps]}
+
+def complete_task(task_id: int, result: str) -> dict:
+    """Mark a step or goal done, with a short summary of the result."""
+    board.complete(task_id, result)
+    return {"task_id": task_id, "status": "done"}
+
+INSTRUCTIONS = """You are a careful worker with a shared todo board and file tools.
+Take the pending goal and see it through. First add a short plan of concrete steps under the goal.
+Then carry them out with your file tools, marking each step done as you finish it.
+When all steps are done, mark the goal done. Your files live in the one folder your tools can use."""</code></pre></figure>
+<p>The worker's tools are ordinary typed, documented functions, and the file tools come from the official filesystem MCP server, started with <code>npx -y @modelcontextprotocol/server-filesystem &lt;folder&gt;</code>, which refuses any path outside the folder you give it. The only thing that changes between frameworks is the glue.</p>
+
+<h2>The same worker, five times</h2>
+<figure class="code"><figcaption>Google ADK: task_worker/agent.py</figcaption><pre><code class="hl-py">from google.adk.agents import LlmAgent
+from google.adk.runners import InMemoryRunner
+from google.adk.tools.mcp_tool import McpToolset, StdioConnectionParams
+from mcp import StdioServerParameters
+
+filesystem = McpToolset(connection_params=StdioConnectionParams(
+    server_params=StdioServerParameters(command="npx",
+        args=["-y", "@modelcontextprotocol/server-filesystem", str(WORKSPACE)], cwd=str(WORKSPACE)),
+    timeout=60))
+
+root_agent = LlmAgent(model="gemini-3.1-flash-lite", name="task_worker",
+    description="Works one goal from the board using its files.",
+    instruction=INSTRUCTIONS, tools=[show_todos, plan_steps, complete_task, filesystem])
+
+runner = InMemoryRunner(agent=root_agent)
+await runner.run_debug("Please work the pending goal on the board.", verbose=True)</code></pre></figure>
+<p>ADK takes plain functions as tools directly. Put the agent in a package whose <code>agent.py</code> defines <code>root_agent</code>, and <code>adk web</code> opens a local developer UI where you can chat with it and inspect every event, while <code>adk run</code> does the same in the terminal.</p>
+<figure class="code"><figcaption>Pydantic AI</figcaption><pre><code class="hl-py">from pydantic_ai import Agent
+from pydantic_ai.mcp import MCPToolset
+from fastmcp.client.transports import StdioTransport
+
+filesystem = MCPToolset(StdioTransport(command="npx",
+    args=["-y", "@modelcontextprotocol/server-filesystem", str(WORKSPACE)], cwd=str(WORKSPACE)))
+
+worker = Agent("openai-chat:gpt-5.4-mini", instructions=INSTRUCTIONS,
+               tools=[show_todos, plan_steps, complete_task], toolsets=[filesystem])
+async with worker:                                # opens the MCP connection
+    result = await worker.run("Please work the pending goal on the board.")
+print(result.output)</code></pre></figure>
+<figure class="code"><figcaption>AWS Strands Agents</figcaption><pre><code class="hl-py">import os
+from strands import Agent
+from strands.models.openai import OpenAIModel
+from strands.tools.mcp import MCPClient
+from mcp import stdio_client, StdioServerParameters
+
+model = OpenAIModel(client_args={"api_key": os.environ["OPENAI_API_KEY"]}, model_id="gpt-5.4-mini")
+filesystem = MCPClient(lambda: stdio_client(StdioServerParameters(command="npx",
+    args=["-y", "@modelcontextprotocol/server-filesystem", str(WORKSPACE)], cwd=str(WORKSPACE))))
+
+worker = Agent(model=model, system_prompt=INSTRUCTIONS,
+               tools=[show_todos, plan_steps, complete_task, filesystem])
+await worker.invoke_async("Please work the pending goal on the board.")</code></pre></figure>
+<p>A bare <code>Agent()</code> in Strands defaults to a model on Amazon Bedrock, which needs AWS credentials; passing an <code>OpenAIModel</code> avoids that. Strands also offers a <code>@tool</code> decorator when you want to control a tool's name or description.</p>
+<figure class="code"><figcaption>Microsoft Agent Framework</figcaption><pre><code class="hl-py">from agent_framework import Agent, MCPStdioTool
+from agent_framework.openai import OpenAIChatClient
+
+client = OpenAIChatClient(model="gpt-5.4-mini")
+async with MCPStdioTool(name="filesystem", command="npx",
+        args=["-y", "@modelcontextprotocol/server-filesystem", str(WORKSPACE)], cwd=str(WORKSPACE)) as filesystem:
+    worker = Agent(client=client, instructions=INSTRUCTIONS,
+                   tools=[show_todos, plan_steps, complete_task, filesystem])
+    await worker.run("Please work the pending goal on the board.")</code></pre></figure>
+<figure class="code"><figcaption>Agno</figcaption><pre><code class="hl-py">from agno.agent import Agent
+from agno.models.openai import OpenAIChat
+from agno.tools.mcp import MCPTools
+from mcp import StdioServerParameters
+
+server = StdioServerParameters(command="npx",
+    args=["-y", "@modelcontextprotocol/server-filesystem", str(WORKSPACE)], cwd=str(WORKSPACE))
+async with MCPTools(server_params=server, timeout_seconds=60) as filesystem:
+    worker = Agent(model=OpenAIChat(id="gpt-5.4-mini"), instructions=INSTRUCTIONS,
+                   tools=[show_todos, plan_steps, complete_task, filesystem])
+    await worker.arun(input="Please work the pending goal on the board.")</code></pre></figure>
+<p>Microsoft Agent Framework is the successor to AutoGen and Semantic Kernel, for teams in the Microsoft and Azure world. Agno pairs its agent library with a runtime for serving agents. If you work in TypeScript, Mastra is the equivalent there: <code>new Agent({ name, instructions, model: "openai/gpt-5.4-mini", tools })</code>, tools built with <code>createTool</code> and zod schemas, and MCP through <code>@mastra/mcp</code>'s <code>MCPClient</code>.</p>
+
+<h2>The five questions</h2>
+<div class="tbl"><table>
+<thead><tr><th>Question</th><th>ADK</th><th>Pydantic AI</th><th>Strands</th><th>Agent Framework</th><th>Agno</th></tr></thead>
+<tbody>
+<tr><td>Agent</td><td><code>LlmAgent(instruction=)</code></td><td><code>Agent("openai-chat:…", instructions=)</code></td><td><code>Agent(model=, system_prompt=)</code></td><td><code>Agent(client=, instructions=)</code></td><td><code>Agent(model=, instructions=)</code></td></tr>
+<tr><td>Run</td><td><code>InMemoryRunner(…)</code>, <code>adk web</code></td><td><code>await agent.run()</code> → <code>.output</code></td><td><code>agent(…)</code> or <code>invoke_async</code></td><td><code>await agent.run()</code></td><td><code>agent.run()</code> / <code>arun</code></td></tr>
+<tr><td>Tools</td><td>Plain functions</td><td>Plain functions</td><td>Functions or <code>@tool</code></td><td>Plain functions</td><td>Plain functions</td></tr>
+<tr><td>MCP</td><td><code>McpToolset</code></td><td><code>MCPToolset</code></td><td><code>MCPClient</code></td><td><code>MCPStdioTool</code></td><td><code>MCPTools</code></td></tr>
+<tr><td>Default model</td><td>Gemini</td><td>You name it</td><td>Bedrock</td><td>You pass a client</td><td>You pass a model</td></tr>
+</tbody></table></div>
+<p>Look at how little differs. Every framework takes typed, documented functions as tools, connects to the same MCP server over stdio, and runs the same loop. The real differences are elsewhere: default models and clouds, how runs are served and observed, multi-agent features, and how stable the APIs are.</p>
+
+<h2>Agents talking across frameworks: A2A</h2>
+<p>MCP connects an agent to tools. The <strong>Agent2Agent (A2A)</strong> protocol connects an agent to another agent, possibly in another framework or organization. An A2A agent publishes an <strong>agent card</strong> (its name, skills and endpoint, at a well-known URL) and accepts tasks over HTTP. ADK can serve an agent this way and call remote ones as if they were local sub-agents.</p>
+<figure class="code"><figcaption>Serve one agent, use it from another</figcaption><pre><code class="hl-py"># server.py: run with  uv run uvicorn server:a2a_app --port 8001
+from google.adk.a2a.utils.agent_to_a2a import to_a2a
+a2a_app = to_a2a(translator_agent, port=8001)     # the port the card advertises must match
+
+# concierge/agent.py
+from google.adk.agents.remote_a2a_agent import RemoteA2aAgent, AGENT_CARD_WELL_KNOWN_PATH
+translator = RemoteA2aAgent(name="translator_agent",
+    description="Remote agent that translates English into Spanish.",
+    agent_card=f"http://localhost:8001{AGENT_CARD_WELL_KNOWN_PATH}")
+root_agent = LlmAgent(model="gemini-3.1-flash-lite", name="spanish_concierge",
+    instruction="When the user wants something translated into Spanish, delegate to translator_agent.",
+    sub_agents=[translator])</code></pre></figure>
+
+<h2>From workers to a team</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 230" role="img" aria-label="An orchestrator agent coordinates five framework workers through a shared task board. It launches each worker on a task, waits, has a QA agent test the result in a browser, and relaunches a worker to fix problems.">
+  <defs><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+  <rect x="20" y="86" width="140" height="58" rx="6" fill="color-mix(in srgb,var(--w6) 18%,var(--paper))" stroke="var(--w6)" stroke-width="2"/><text x="90" y="110" text-anchor="middle" style="font-size:13px;font-weight:600">orchestrator</text><text x="90" y="128" text-anchor="middle" class="muted" style="font-size:11px">launch, wait, test, fix</text>
+  <rect x="250" y="86" width="120" height="58" rx="6" class="box"/><text x="310" y="110" text-anchor="middle" style="font-size:13px;font-weight:600">task board</text><text x="310" y="128" text-anchor="middle" class="muted" style="font-size:11px">SQLite: claim, done</text>
+  <g style="font-size:12px">
+  <rect x="446" y="14" width="120" height="30" rx="5" class="box"/><text x="506" y="34" text-anchor="middle">ADK</text>
+  <rect x="446" y="54" width="120" height="30" rx="5" class="box"/><text x="506" y="74" text-anchor="middle">Pydantic AI</text>
+  <rect x="446" y="94" width="120" height="30" rx="5" class="box"/><text x="506" y="114" text-anchor="middle">Strands</text>
+  <rect x="446" y="134" width="120" height="30" rx="5" class="box"/><text x="506" y="154" text-anchor="middle">Agent Framework</text>
+  <rect x="446" y="174" width="120" height="30" rx="5" class="box"/><text x="506" y="194" text-anchor="middle">Agno</text>
+  </g>
+  <rect x="584" y="94" width="90" height="30" rx="5" fill="color-mix(in srgb,var(--w2) 18%,var(--paper))" stroke="var(--w2)" stroke-width="2"/><text x="629" y="114" text-anchor="middle" style="font-size:12px">QA in browser</text>
+  <path d="M160 115 H250" class="ln" marker-end="url(#a6)"/>
+  <path d="M370 115 C410 115 406 29 446 29 M370 115 C410 115 406 69 446 69 M370 115 H446 M370 115 C410 115 406 149 446 149 M370 115 C410 115 406 189 446 189" class="ln"/>
+  <path d="M566 109 H584" class="ln" marker-end="url(#a6)"/>
+  <text x="205" y="105" text-anchor="middle" class="muted" style="font-size:11px">tasks</text>
+  <text x="310" y="222" text-anchor="middle" class="muted" style="font-size:11px">workers run as subprocesses; each claims one task and marks it done</text>
+  <path id="p6a" d="M90 115 H310 C410 115 406 29 506 29" fill="none"/>
+  <g class="live"><circle r="5" fill="var(--w6)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="3s" repeatCount="indefinite"><mpath href="#p6a"/></animateMotion></circle></g>
+</svg>
+<figcaption>Shared state, not chat, connects the team: each worker reads and writes the board, so the orchestrator always knows where things stand.</figcaption>
+</figure>
+<p>Give each worker an optional task ID and board path on the command line: run bare, it seeds its own demo goal; given a task, it claims that one, works it, marks it done and exits. The orchestrator is itself an agent (in ADK, say) with a handful of tools you write:</p>
+<ul>
+  <li><code>launch_worker(framework, objective)</code> adds a task to the board and starts that framework's worker as a subprocess, returning at once.</li>
+  <li><code>wait_for_team()</code> blocks until every launched worker exits or times out, then returns the board.</li>
+  <li><code>test_output(task_id)</code> hands the result to a short-lived QA agent with a browser (the Playwright MCP server) that tries it and reports a verdict.</li>
+  <li><code>relaunch_worker(framework, problem)</code> adds a fix task describing the symptom and runs that worker once more. Allow one fix per task, so a broken result is reported rather than retried forever.</li>
+</ul>
+<p>A good brief for the team is a small arcade of browser games that teach a language, one game per framework, each a single HTML file in a shared folder. The board shows progress live, the QA agent catches games that don't load, and the outer loop (launch, wait, test, fix) is the same shape as the inner one each worker runs.</p>
+
+<h2>Choosing a framework</h2>
+<div class="tbl"><table>
+<thead><tr><th>If you need…</th><th>Consider</th></tr></thead>
+<tbody>
+<tr><td>The least machinery, OpenAI-first, good tracing</td><td>OpenAI Agents SDK</td></tr>
+<tr><td>Role-based teams configured in YAML</td><td>CrewAI</td></tr>
+<tr><td>Durable state, human approval, replay, explicit control flow</td><td>LangGraph</td></tr>
+<tr><td>Google Cloud and Gemini, a built-in dev UI, A2A</td><td>Google ADK</td></tr>
+<tr><td>Type safety and validation everywhere, model-agnostic</td><td>Pydantic AI</td></tr>
+<tr><td>AWS and Bedrock</td><td>Strands Agents</td></tr>
+<tr><td>Azure and .NET alongside Python</td><td>Microsoft Agent Framework</td></tr>
+<tr><td>TypeScript</td><td>Mastra, or the OpenAI Agents SDK for JavaScript</td></tr>
+</tbody></table></div>
+<p>Or none: Module 2's loop plus MCP is enough for many products. Pick the framework that matches your cloud and your need for control, and keep your tools as plain functions and MCP servers so you can switch.</p>
+
+<div class="note pitfall"><h4>Two workers, one task</h4>
+<p>When several workers share a board, two can grab the same task. The <code>claim</code> function above avoids that with a single conditional <code>UPDATE</code>: only one worker's update matches <code>status='pending'</code>, and the other gets <code>False</code> and moves on. Never read a status and then write it in two separate steps.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Every framework answers the same five questions: how to make an agent, run it, add tools, add MCP, and loop toward a goal.</li>
+  <li>Keeping tools as plain functions and MCP servers makes them portable across all of them.</li>
+  <li>A2A connects agents to agents through published cards; MCP connects agents to tools.</li>
+  <li>Teams coordinate best through shared state with atomic claims, and an orchestrator that tests results before accepting them.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">You create <code>Agent(system_prompt=...)</code> in Strands with no model, and it fails with an AWS credentials error. Why?</p>
+<ol><li><button>Strands needs an S3 bucket</button></li><li><button>The filesystem MCP server needs AWS</button></li><li><button>Strands defaults to a model on Amazon Bedrock</button></li><li><button>Strands only supports async</button></li></ol>
+<p class="q-why">Pass an explicit model, such as <code>OpenAIModel(...)</code>, to use another provider.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">What's the difference between MCP and A2A?</p>
+<ol><li><button>MCP connects agents to tools and data; A2A connects agents to other agents</button></li><li><button>A2A is MCP over HTTP</button></li><li><button>MCP is for Python, A2A for TypeScript</button></li><li><button>They're competing names for the same protocol</button></li></ol>
+<p class="q-why">An A2A agent publishes a card describing its skills and accepts tasks; an MCP server exposes tools, resources and prompts.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">Why does the orchestrator limit each task to one fix attempt?</p>
+<ol><li><button>Workers can only run twice</button></li><li><button>The board can't store more</button></li><li><button>The QA agent gets tired</button></li><li><button>So a task that keeps failing is reported, not retried forever at growing cost</button></li></ol>
+<p class="q-why">Bounded retries are a basic guard on autonomous loops: cost and time stay predictable, and humans see what failed.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w6)"><h2>Exercise: a sixth framework</h2>
+<p>Pick a framework not covered here and build the worker in it, using only its documentation and the five questions. Time yourself. Then add a <code>--model</code> option to every worker and run the same task on two models: does the framework or the model matter more for whether the task gets done?</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://google.github.io/adk-docs/">Agent Development Kit</a> — Google</li>
+  <li><a href="https://ai.pydantic.dev/">Pydantic AI</a></li>
+  <li><a href="https://strandsagents.com/">Strands Agents</a> — AWS</li>
+  <li><a href="https://learn.microsoft.com/en-us/agent-framework/">Microsoft Agent Framework</a></li>
+  <li><a href="https://docs.agno.com/">Agno</a> and <a href="https://mastra.ai/docs">Mastra</a></li>
+  <li><a href="https://a2a-protocol.org/">A2A protocol</a></li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/5_agent_frameworks">Week 5 reference implementation</a> — ed-donner/agents</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

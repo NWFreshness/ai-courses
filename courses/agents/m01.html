@@ -1,0 +1,157 @@
+
+<section class="module" id="m0" data-title="Set up the workshop" data-wire="var(--w0)" data-group="Before you start">
+<div class="wire-band" style="--wire:var(--w0)"></div>
+<header class="mod-head">
+  <p class="mod-num">Module 0 · before Week 1 · 1–2 hours</p>
+  <h1>Set up the workshop</h1>
+  <p class="lede">Agents touch more of your machine than a chatbot does: they launch subprocesses, run code, open browsers and send messages. An hour setting up a clean project, the right runtimes, a handful of keys and a spending limit saves days of confusion later.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w0)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Create a uv project with the packages each week needs, and know which to pin.</li>
+    <li>Install Node (for MCP servers launched with <code>npx</code>) and Docker (for running agent-written code).</li>
+    <li>Store keys for models, search and notifications safely, and cap what you can spend.</li>
+    <li>Write and run async Python, which every framework in this course uses.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w0)">
+  <h2>Project: a workshop that runs agents</h2>
+  <ol>
+    <li>Install git, an editor with Jupyter support, <a href="https://docs.astral.sh/uv/getting-started/installation/">uv</a>, <a href="https://nodejs.org/en/download">Node 22 or later</a> and <a href="https://docs.docker.com/get-started/get-docker/">Docker</a>.</li>
+    <li>Create the project and add the Week 1 and 2 packages (commands below).</li>
+    <li>Create a <code>.env</code> with at least one model key, and list it in <code>.gitignore</code>.</li>
+    <li>Set up <a href="https://pushover.net">Pushover</a> on your phone and send yourself a test notification from Python.</li>
+    <li>Run the async smoke test at the end of this module, and set a monthly spending limit on every paid account.</li>
+  </ol>
+  <p class="cost">Cost: free to set up. A full run through the course typically costs a few dollars in model calls if you use small models; Pushover is free for a trial, then a one-time fee.</p>
+</div>
+
+<h2>The moving parts</h2>
+<div class="tbl"><table>
+<thead><tr><th>Piece</th><th>Why agents need it</th><th>First used</th></tr></thead>
+<tbody>
+<tr><td>uv</td><td>One locked environment per project, so a framework upgrade can't silently break last week's code</td><td>Week 1</td></tr>
+<tr><td>A model key</td><td>OpenAI's key works with every example here. OpenRouter gives you many providers through one key; Ollama runs open models locally for free, though small local models are weak at tool calling</td><td>Week 1</td></tr>
+<tr><td>Pushover</td><td>A simple way for an agent to reach you: one HTTP POST puts a notification on your phone</td><td>Week 1</td></tr>
+<tr><td>Email over SMTP</td><td>An app password for an email account you own, so an agent can send you (and only you) real mail</td><td>Week 2</td></tr>
+<tr><td>Docker</td><td>A disposable container where agent-written code can run without touching your files</td><td>Week 3</td></tr>
+<tr><td>Search keys</td><td>Serper (Google results) and Tavily (search built for agents) both have free tiers</td><td>Weeks 3, 4, 6</td></tr>
+<tr><td>Node 22+</td><td>Many MCP servers are JavaScript packages launched with <code>npx</code>, including the browser and filesystem servers</td><td>Weeks 4, 5, 6</td></tr>
+</tbody></table></div>
+
+<h2>Create the project</h2>
+<figure class="code"><figcaption>Terminal: a project for the whole course</figcaption><pre><code class="hl-sh">uv init agents-course --python 3.12
+cd agents-course
+uv add openai python-dotenv requests rich gradio pydantic jupyter
+uv add "openai-agents[viz]"                       # Week 2 onward
+uv add langchain langchain-openai langgraph langgraph-checkpoint-sqlite deepagents   # Week 4
+echo ".env" >> .gitignore</code></pre></figure>
+<p>Add the remaining frameworks when you reach their week, so you only debug one install at a time. CrewAI is the exception to sharing one environment: it's installed as a command-line tool and creates its own project folders, each with its own environment (Module 4 shows how).</p>
+
+<div class="note principle"><h4>Pin what you depend on</h4>
+<p>Agent frameworks ship breaking changes often. This course was written against openai-agents 0.15, CrewAI 1.14, LangChain and LangGraph 1.x, Google ADK 2.2 and the MCP Python SDK 1.27 and 2.x. When something here doesn't match what you see, check the version first. <code>uv add "crewai==1.14.4"</code> pins exactly; <code>uv lock --upgrade-package openai-agents</code> moves one package forward deliberately.</p></div>
+
+<h2>Keys in <code>.env</code></h2>
+<figure class="code"><figcaption>.env (never commit this file)</figcaption><pre><code class="hl-sh">OPENAI_API_KEY=sk-proj-...
+OPENROUTER_API_KEY=sk-or-...        # optional: many providers, one key
+GOOGLE_API_KEY=AIza...              # optional: Gemini, used by Google ADK in Week 5
+SERPER_API_KEY=...                  # Week 3 onward
+TAVILY_API_KEY=tvly-...             # Week 6
+PUSHOVER_USER=u...
+PUSHOVER_TOKEN=a...
+EMAIL_ADDRESS=you@example.com       # Week 2: an account you own
+EMAIL_SMTP_SERVER=smtp.gmail.com
+EMAIL_APP_PASSWORD=...</code></pre></figure>
+<p>Load it at the top of every script or notebook with <code>load_dotenv(override=True)</code>. The <code>override=True</code> matters: without it, a stale key exported in your shell wins over the file you just edited.</p>
+
+<h2>A notifier you'll reuse all course</h2>
+<figure class="code"><figcaption>notify.py</figcaption><pre><code class="hl-py">import os
+import requests
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
+def push(message: str) -> str:
+    """Send a push notification to my phone."""
+    r = requests.post("https://api.pushover.net/1/messages.json", data={
+        "user": os.environ["PUSHOVER_USER"],
+        "token": os.environ["PUSHOVER_TOKEN"],
+        "message": message[:1000],
+    }, timeout=10)
+    return "sent" if r.ok else f"failed: {r.status_code}"
+
+if __name__ == "__main__":
+    print(push("Hello from my agent workshop"))</code></pre></figure>
+<p>Notice the shape: a plain function with type hints, a docstring that says what it does, and a short string result that says whether it worked. That's exactly the shape a tool needs, and you'll hand this function to agents in almost every week.</p>
+
+<h2>Async in ten minutes</h2>
+<p>Agents spend most of their time waiting: for a model, a web page, a subprocess. Every framework in this course is built on <code>asyncio</code> so that waiting can overlap. Three rules cover nearly everything you'll write.</p>
+<ul>
+  <li><code>async def</code> defines a coroutine; calling it gives you an object that does nothing until it's awaited.</li>
+  <li><code>await</code> runs it and waits for the result. In a notebook you can <code>await</code> directly in a cell; in a script, wrap your entry point in <code>asyncio.run(main())</code>.</li>
+  <li><code>asyncio.gather(a(), b(), c())</code> runs several at once and returns their results in order. This is how you'll run three agents in parallel in Week 2 and four traders in Week 6.</li>
+</ul>
+<figure class="code"><figcaption>smoke_test.py: three model calls at once</figcaption><pre><code class="hl-py">import asyncio, time
+from dotenv import load_dotenv
+from openai import AsyncOpenAI
+
+load_dotenv(override=True)
+client = AsyncOpenAI()
+
+async def ask(question: str) -> str:
+    response = await client.chat.completions.create(
+        model="gpt-5.4-mini", messages=[{"role": "user", "content": question}])
+    return response.choices[0].message.content
+
+async def main():
+    start = time.time()
+    answers = await asyncio.gather(*(ask(f"Name a use for an AI agent in {field}, in one line.")
+                                     for field in ["farming", "law", "retail"]))
+    for a in answers:
+        print("-", a)
+    print(f"{time.time() - start:.1f}s for three calls")
+
+asyncio.run(main())</code></pre></figure>
+<p>Run it with <code>uv run smoke_test.py</code>. Three calls should take about as long as one. If you only have an OpenRouter key, create the client with <code>AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY"))</code> and use a model name like <code>openai/gpt-5.4-mini</code>.</p>
+
+<h2>What it costs, and how to keep it near zero</h2>
+<p>Agents multiply calls: one task can be ten or fifty model calls, and a loop with a bug can make hundreds. Use a small model while you build (every example here uses one), set a hard monthly limit on each provider's billing page, and watch the usage page after your first few runs so you know what a run costs. Hosted tools such as OpenAI's web search are billed per call on top of tokens; free-tier search APIs are cheaper for learning.</p>
+
+<div class="note pitfall"><h4>Most setup failures</h4>
+<p>An unsaved <code>.env</code>, or one saved as <code>.env.txt</code>. Running a script with the system Python instead of <code>uv run</code>. <code>npx</code> not found because Node was installed after the terminal opened (open a new one). Docker installed but not running. On Windows, MCP servers launched from a notebook can fail with <code>io.UnsupportedOperation: fileno</code>; run those examples as scripts, or use WSL.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>One uv project, packages added week by week, versions pinned where frameworks move fast.</li>
+  <li>Node and Docker aren't optional extras: MCP servers and safe code execution depend on them.</li>
+  <li>A good tool is a plain function with type hints, a docstring and a readable result.</li>
+  <li><code>await</code> one thing, <code>asyncio.gather</code> many, <code>asyncio.run</code> at the top of a script.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="1"><p class="q-prompt">You edited <code>OPENAI_API_KEY</code> in <code>.env</code>, but your script still uses the old key. What's the most likely cause?</p>
+<ol><li><button>uv caches environment files</button></li><li><button>The old key is exported in your shell and <code>load_dotenv</code> was called without <code>override=True</code></button></li><li><button>Keys take an hour to activate</button></li><li><button><code>.env</code> must be in your home folder</button></li></ol>
+<p class="q-why">By default <code>load_dotenv</code> doesn't replace variables that are already set in the environment.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">In a script, you want three agents to work at the same time and collect all their results. Which do you use?</p>
+<ol><li><button>Three <code>asyncio.run()</code> calls in a row</button></li><li><button>A <code>for</code> loop that awaits each one</button></li><li><button><code>time.sleep</code> between calls</button></li><li><button><code>await asyncio.gather(a(), b(), c())</code> inside an async <code>main</code></button></li></ol>
+<p class="q-why"><code>gather</code> runs the coroutines concurrently and returns their results in order. Awaiting in a loop runs them one after another.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">Why install Node for a Python course?</p>
+<ol><li><button>Many MCP servers, including the browser and filesystem servers, are JavaScript packages started with <code>npx</code></button></li><li><button>The OpenAI SDK needs it</button></li><li><button>Jupyter runs on Node</button></li><li><button>It isn't needed</button></li></ol>
+<p class="q-why">Your Python agent launches those servers as subprocesses; Node has to be on the path for that to work.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w0)"><h2>Exercise: a second tool</h2>
+<p>Next to <code>push</code>, write <code>send_email(subject: str, body: str) -> str</code> using <code>smtplib</code> and <code>EmailMessage</code> that sends only to your own address (read it from <code>.env</code>, never from an argument). Return a short status string, and catch exceptions so a failure comes back as text rather than a crash. You'll give this function to an agent in Week 2.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://docs.astral.sh/uv/">uv documentation</a></li>
+  <li><a href="https://docs.python.org/3/library/asyncio-task.html">Coroutines and tasks</a> — Python documentation</li>
+  <li><a href="https://pushover.net/api">Pushover API</a></li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/setup">Setup guides in the reference course</a> — ed-donner/agents (Mac, PC, Linux and Node)</li>
+</ul>
+<div class="mod-foot"></div>
+</section>

@@ -1,33 +1,32 @@
 <section class="module" id="m2" data-title="Week 2: Chat apps and tools" data-wire="var(--w2)" data-group="Foundations">
 <div class="wire-band" style="--wire:var(--w2)"></div>
 <header class="mod-head">
-  <p class="mod-num">Week 2 · Module 2 of 9 · <code>week2/</code></p>
+  <p class="mod-num">Week 2 · Module 2 of 9</p>
   <h1>Many models, real interfaces, and tools</h1>
-  <p class="lede">Week 2 widens the lens to every major provider, puts a user interface on your code with Gradio, builds a chatbot that keeps its history, and then gives it tools: functions it can ask your code to run. It closes with an airline assistant that looks up prices in a database, draws pictures and speaks.</p>
+  <p class="lede">This week widens the lens to every major provider, puts a web interface on your code with Gradio, builds a chatbot that keeps its history, and then gives it tools: functions it can ask your code to run. You finish with an airline assistant that looks up prices in a database, draws pictures and speaks.</p>
 </header>
 
 <div class="objectives" style="--wire:var(--w2)">
   <h2>By the end of this week you can</h2>
   <ul>
-    <li>Call several providers through their native SDKs, compatible endpoints, routers, and LiteLLM.</li>
-    <li>Explain reasoning effort and prompt caching, and when each saves you money or improves answers.</li>
+    <li>Call several providers through native SDKs, compatible endpoints, routers and LiteLLM.</li>
+    <li>Explain reasoning effort and prompt caching, and when each saves money or improves answers.</li>
     <li>Build Gradio interfaces and a chatbot that passes history correctly.</li>
     <li>Implement tool calling end to end, including several tool calls in one turn.</li>
   </ul>
 </div>
 
-<h2>Notebook map</h2>
-<div class="tbl nbmap"><table>
-<thead><tr><th>File</th><th>What happens</th><th>Look for</th></tr></thead>
-<tbody>
-<tr><td><code>day1.ipynb</code></td><td>Tour of providers; reasoning effort on puzzles; native SDKs; OpenRouter; LangChain; LiteLLM with cost tracking; prompt caching with Hamlet; two chatbots arguing</td><td>How the adversarial conversation builds each side's history</td></tr>
-<tr><td><code>day2.ipynb</code></td><td>Gradio: <code>Interface</code>, sharing, authentication, streaming, a model picker, the brochure generator as an app</td><td>Streaming by yielding the growing text from a generator</td></tr>
-<tr><td><code>day3.ipynb</code></td><td>Chatbots with <code>gr.ChatInterface</code>; a store assistant whose system prompt changes with the message</td><td>Converting Gradio history into API messages</td></tr>
-<tr><td><code>day4.ipynb</code></td><td>FlightAI airline assistant; the first tool; then tool prices from SQLite</td><td><code>handle_tool_calls</code> and the second model call</td></tr>
-<tr><td><code>day5.ipynb</code></td><td>Multimodal: image generation and text-to-speech; a custom <code>gr.Blocks</code> UI</td><td>The three styles of Gradio UI</td></tr>
-<tr><td><code>extra.ipynb</code>, <code>week2 EXERCISE.ipynb</code></td><td>Models drawing SVGs side by side; the end-of-week exercise</td><td>Your own prototype</td></tr>
-</tbody></table></div>
-<p class="cost">Cost: cents for text. Images cost a few cents each, so don't generate hundreds.</p>
+<div class="build" style="--wire:var(--w2)">
+  <h2>Project: FlightAI, an airline assistant</h2>
+  <ol>
+    <li>Warm up: ask the same puzzle to three providers and to one reasoning model at two effort levels, and compare answers and token counts.</li>
+    <li>Put a streaming model call behind a <code>gr.Interface</code>, with a dropdown to choose the model.</li>
+    <li>Build a <code>gr.ChatInterface</code> assistant for a fictional airline with a short, courteous system prompt.</li>
+    <li>Create a SQLite table of ticket prices and give the assistant a <code>get_ticket_price</code> tool. Handle several tool calls per turn.</li>
+    <li>Add an image of the destination and a spoken reply, in a custom <code>gr.Blocks</code> layout.</li>
+  </ol>
+  <p class="cost">Cost: cents for text. Generated images cost a few cents each.</p>
+</div>
 
 <h2>Four ways to reach a model</h2>
 <div class="tbl"><table>
@@ -36,15 +35,19 @@
 <tr><td>Native SDK</td><td><code>anthropic.Anthropic().messages.create(...)</code></td><td>Full feature set for that provider; a different shape for each</td></tr>
 <tr><td>OpenAI-compatible endpoint</td><td><code>OpenAI(base_url=...)</code> for Gemini, DeepSeek, Groq, Ollama</td><td>One shape everywhere; some provider features missing</td></tr>
 <tr><td>Router</td><td>OpenRouter: one key, hundreds of models</td><td>Convenient for comparing; a middleman in the path</td></tr>
-<tr><td>Abstraction library</td><td>LiteLLM (light), LangChain (heavy)</td><td>LiteLLM gives one call plus token and cost reporting; LangChain adds a large framework you may not need yet</td></tr>
+<tr><td>Abstraction library</td><td>LiteLLM (light), LangChain (heavy)</td><td>LiteLLM gives one <code>completion()</code> call plus token and cost reporting; LangChain is a large framework you may not need yet</td></tr>
 </tbody></table></div>
-<p>The author's stated favorite is LiteLLM, because it's light: one <code>completion()</code> call with a <code>provider/model</code> string, and it reports token counts and cost for each response.</p>
+<figure class="code"><figcaption>LiteLLM: one call shape, cost included</figcaption>
+<pre><code><span class="k">from</span> litellm <span class="k">import</span> completion
+r = completion(model=<span class="s">"anthropic/"</span> + CLAUDE_MODEL, messages=[{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: <span class="s">"Tell me a joke"</span>}])
+print(r.choices[<span class="s">0</span>].message.content, r.usage.prompt_tokens, r.usage.completion_tokens)
+print(r._hidden_params[<span class="s">"response_cost"</span>])                 <span class="c"># dollars for this call</span></code></pre></figure>
 
 <h2>Two money-and-quality levers</h2>
 <h3>Reasoning effort</h3>
-<p>Reasoning models can "think" before answering, spending extra tokens to work through a problem. Day 1 contrasts training-time scaling (bigger models trained on more data) with inference-time scaling (letting a model spend more compute per question), using a coin puzzle that a model gets wrong with reasoning off and right with a little reasoning on. More effort means more tokens, cost and latency, so set it per task: low or none for summarizing, higher for puzzles, math and code.</p>
+<p>Reasoning models can "think" before answering, spending extra tokens to work through a problem. That's inference-time scaling: spending more compute per question rather than training a bigger model. Try a probability puzzle such as "I toss two coins and one is heads; what's the chance the other is tails?" with reasoning off and on; small models often get it wrong without reasoning. More effort costs tokens and time, so set it per task: none or low for summarizing, higher for puzzles, math and code.</p>
 <h3>Prompt caching</h3>
-<p>If many requests share a long identical prefix (a system prompt, a document, a codebase), providers can cache it and charge much less for the repeat. Day 1 demonstrates by asking a question about <em>Hamlet</em> with the whole play attached, twice, and printing cached tokens and cost. OpenAI and Gemini cache automatically above a size threshold; Anthropic needs explicit cache markers, and Gemini supports both styles. The rule that follows: <mark>put the stable, shared content first and the changing question last</mark>. The Harness Engineering course has a whole section on designing for the cache (<a href="../harness-engineering/#m4">Module 4</a>).</p>
+<p>If many requests share a long identical prefix (a system prompt, a document, a codebase), providers can cache it and charge much less for the repeat. Try it: attach a long public-domain text, such as the whole of <em>Hamlet</em>, to a question, send it twice, and compare cached tokens and cost. OpenAI and Gemini cache automatically above a size threshold; Anthropic needs explicit cache markers. The rule that follows: <mark>put the stable, shared content first and the changing question last</mark>. Harness Engineering has a full section on designing for the cache (<a href="../harness-engineering/#m4">Module 4</a>).</p>
 
 <h2>Gradio: an interface in a few lines</h2>
 <p>Gradio wraps a Python function in a web UI. You give it a function and describe the inputs and outputs; it renders the page and calls your function. If the function is a generator that <em>yields</em> successively longer strings, the output streams.</p>
@@ -60,7 +63,7 @@
         <span class="k">yield</span> text                                  <span class="c"># Gradio redraws the output each time</span>
 
 gr.Interface(fn=ask, inputs=gr.Textbox(lines=6), outputs=gr.Markdown(), flagging_mode=<span class="s">"never"</span>).launch()</code></pre></figure>
-<p>Day 2 also shows <code>share=True</code> for a temporary public link, <code>auth=(user, password)</code> for a simple login, and forcing dark mode. Day 5 introduces the three styles of Gradio UI: <code>gr.Interface</code> for a function, <code>gr.ChatInterface</code> for chat, and <code>gr.Blocks</code> when you want to lay out components and wire events yourself.</p>
+<p><code>launch(share=True)</code> gives a temporary public link, and <code>auth=("user", "password")</code> adds a simple login. There are three styles of Gradio UI: <code>gr.Interface</code> for a function, <code>gr.ChatInterface</code> for chat, and <code>gr.Blocks</code> when you want to lay out components and wire events yourself.</p>
 
 <h2>A chatbot is a history-passing loop</h2>
 <p>With <code>gr.ChatInterface</code>, your function receives the new message and the history so far. Your job is to turn that into the messages list the API wants: system prompt, then the history, then the new message. That's Week 1's "illusion of memory" made concrete.</p>
@@ -71,7 +74,7 @@ gr.Interface(fn=ask, inputs=gr.Textbox(lines=6), outputs=gr.Markdown(), flagging
     <span class="k">return</span> client.chat.completions.create(model=MODEL, messages=messages).choices[<span class="s">0</span>].message.content
 
 gr.ChatInterface(fn=chat, type=<span class="s">"messages"</span>).launch()</code></pre></figure>
-<p>Day 3's clothes-store assistant shows a small but powerful idea: the system prompt doesn't have to be fixed. When the user mentions belts, the code appends extra instructions for that turn. Injecting context based on what the user said is the seed of retrieval in Week 5.</p>
+<p>The system prompt doesn't have to be fixed. A shop assistant could append extra instructions only when the customer mentions a product that's on offer. Injecting context based on what the user said is the seed of retrieval in Week 5.</p>
 
 <h2>Tools: letting the model ask your code for help</h2>
 <p>The model can't look up a ticket price. But you can describe a function to it, and it can reply with "please call <code>get_ticket_price</code> with <code>destination_city="Paris"</code>" instead of an answer. Your code runs the function and sends the result back, and the model writes the final reply.</p>
@@ -91,8 +94,21 @@ gr.ChatInterface(fn=chat, type=<span class="s">"messages"</span>).launch()</code
 </svg>
 <figcaption>The model never runs anything. It asks; your code decides whether and how to act.</figcaption>
 </figure>
-<figure class="code"><figcaption>Day 4's pattern, condensed</figcaption>
-<pre><code>price_tool = {<span class="s">"type"</span>: <span class="s">"function"</span>, <span class="s">"function"</span>: {
+<figure class="code"><figcaption>flightai.py: a tool backed by SQLite</figcaption>
+<pre><code><span class="k">import</span> json, sqlite3
+
+DB = <span class="s">"prices.db"</span>
+<span class="k">with</span> sqlite3.connect(DB) <span class="k">as</span> conn:
+    conn.execute(<span class="s">"CREATE TABLE IF NOT EXISTS prices (city TEXT PRIMARY KEY, price REAL)"</span>)
+    conn.executemany(<span class="s">"INSERT OR REPLACE INTO prices VALUES (?, ?)"</span>,
+                     [(<span class="s">"london"</span>, <span class="s">799</span>), (<span class="s">"paris"</span>, <span class="s">899</span>), (<span class="s">"tokyo"</span>, <span class="s">1420</span>), (<span class="s">"sydney"</span>, <span class="s">2999</span>)])
+
+<span class="k">def</span> <span class="f">get_ticket_price</span>(destination_city: str) -> str:
+    <span class="k">with</span> sqlite3.connect(DB) <span class="k">as</span> conn:
+        row = conn.execute(<span class="s">"SELECT price FROM prices WHERE city = ?"</span>, (destination_city.lower(),)).fetchone()
+    <span class="k">return</span> f<span class="s">"{destination_city}: ${row[0]:.0f}"</span> <span class="k">if</span> row <span class="k">else</span> f<span class="s">"No price found for {destination_city}"</span>
+
+price_tool = {<span class="s">"type"</span>: <span class="s">"function"</span>, <span class="s">"function"</span>: {
     <span class="s">"name"</span>: <span class="s">"get_ticket_price"</span>,
     <span class="s">"description"</span>: <span class="s">"Get the price of a return ticket to the destination city."</span>,
     <span class="s">"parameters"</span>: {<span class="s">"type"</span>: <span class="s">"object"</span>, <span class="s">"properties"</span>: {
@@ -100,24 +116,24 @@ gr.ChatInterface(fn=chat, type=<span class="s">"messages"</span>).launch()</code
       <span class="s">"required"</span>: [<span class="s">"destination_city"</span>], <span class="s">"additionalProperties"</span>: <span class="k">False</span>}}}
 
 <span class="k">def</span> <span class="f">chat</span>(message, history):
-    messages = [{<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: SYSTEM}] + clean(history) + [{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: message}]
+    history = [{<span class="s">"role"</span>: h[<span class="s">"role"</span>], <span class="s">"content"</span>: h[<span class="s">"content"</span>]} <span class="k">for</span> h <span class="k">in</span> history]
+    messages = [{<span class="s">"role"</span>: <span class="s">"system"</span>, <span class="s">"content"</span>: SYSTEM}] + history + [{<span class="s">"role"</span>: <span class="s">"user"</span>, <span class="s">"content"</span>: message}]
     response = client.chat.completions.create(model=MODEL, messages=messages, tools=[price_tool])
     <span class="k">while</span> response.choices[<span class="s">0</span>].finish_reason == <span class="s">"tool_calls"</span>:
         msg = response.choices[<span class="s">0</span>].message
         messages.append(msg)                                         <span class="c"># the assistant's request</span>
         <span class="k">for</span> call <span class="k">in</span> msg.tool_calls:                                  <span class="c"># there can be several</span>
             args = json.loads(call.function.arguments)
-            result = get_ticket_price(**args)
-            messages.append({<span class="s">"role"</span>: <span class="s">"tool"</span>, <span class="s">"tool_call_id"</span>: call.id, <span class="s">"content"</span>: str(result)})
+            messages.append({<span class="s">"role"</span>: <span class="s">"tool"</span>, <span class="s">"tool_call_id"</span>: call.id, <span class="s">"content"</span>: get_ticket_price(**args)})
         response = client.chat.completions.create(model=MODEL, messages=messages, tools=[price_tool])
     <span class="k">return</span> response.choices[<span class="s">0</span>].message.content</code></pre></figure>
-<p>The notebook starts with a single tool call, then handles several in one turn, then moves the prices into SQLite with a <code>set_ticket_price</code> helper. Using a <code>while</code> loop rather than a single <code>if</code>, as above, lets the model chain lookups. That loop is the heart of every agent you'll build, and it's exactly what <a href="../harness-engineering/#m2">Harness Engineering Module 2</a> takes apart in detail.</p>
+<p>The <code>while</code> loop, rather than a single <code>if</code>, lets the model chain several lookups. That loop is the heart of every agent you'll build, and <a href="../harness-engineering/#m2">Harness Engineering Module 2</a> takes it apart in detail.</p>
 
 <h2>Going multimodal</h2>
-<p>Day 5 adds an <code>artist</code> function that generates a picture of the destination city and a <code>talker</code> that turns the reply into speech, both through the same OpenAI client. The tool handler now also returns which cities were looked up, so the UI knows what to draw. A custom <code>gr.Blocks</code> layout ties chat, image and audio together.</p>
+<p>Add an <code>artist(city)</code> function that calls an image-generation model for a picture of the destination, and a <code>talker(text)</code> that turns the reply into speech with a text-to-speech model, both through the same client (<code>client.images.generate</code> and <code>client.audio.speech.create</code>). Have the tool handler also return which cities were looked up, so the UI knows what to draw. Then lay out chat, image and audio side by side with <code>gr.Blocks</code>.</p>
 
 <div class="note pitfall"><h4>Tool results the model can't use</h4>
-<p>Return something the model can read and act on: <code>"London: $799"</code> or <code>"No price found for Lisbon; ask the customer to pick another city"</code>, not <code>None</code> or a raw exception. And always send back one result per tool call ID, or the next API call will fail.</p></div>
+<p>Return something the model can read and act on, like <code>"London: $799"</code> or <code>"No price found for Lisbon"</code>, not <code>None</code> or a raw exception. And always send back exactly one result per tool call ID, or the next API call will fail.</p></div>
 
 <div class="takeaways"><h2>Takeaways</h2><ul>
   <li>Pick the access layer per job: native SDK for full features, compatible endpoints for one shape, LiteLLM for light abstraction and cost tracking.</li>
@@ -129,25 +145,25 @@ gr.ChatInterface(fn=chat, type=<span class="s">"messages"</span>).launch()</code
 <section class="quiz"><h2>Check your understanding</h2>
 <div class="q" data-correct="2"><p class="q-prompt">The model responds with <code>finish_reason == "tool_calls"</code>. What must your code do before calling the model again?</p>
 <ol><li><button>Discard the response and ask again with a stronger prompt</button></li><li><button>Show the tool call to the user</button></li><li><button>Append the assistant message, run each requested tool, and append a <code>tool</code> message per call ID</button></li><li><button>Switch to a model that doesn't use tools</button></li></ol>
-<p class="q-why">The next call needs the model's request and every matching result in the history, or it can't continue the conversation.</p></div>
+<p class="q-why">The next call needs the model's request and every matching result in the history, or it can't continue.</p></div>
 <div class="q" data-correct="0"><p class="q-prompt">You ask 50 questions about the same 200-page manual. How should you order the prompt to benefit from caching?</p>
 <ol><li><button>Manual first, question last, identical manual text each time</button></li><li><button>Question first, then the manual</button></li><li><button>Shuffle the manual's sections to avoid repetition</button></li><li><button>Order doesn't matter</button></li></ol>
 <p class="q-why">Caches match on identical prefixes. A stable prefix followed by the changing question gets the discount.</p></div>
 <div class="q" data-correct="1"><p class="q-prompt">Which Gradio building block fits a custom layout with a chat panel, an image and an audio player?</p>
 <ol><li><button><code>gr.Interface</code></button></li><li><button><code>gr.Blocks</code></button></li><li><button><code>gr.ChatInterface</code></button></li><li><button>None; use Flask</button></li></ol>
-<p class="q-why"><code>gr.Blocks</code> lets you place components and wire events yourself, which is what Day 5 does.</p></div>
+<p class="q-why"><code>gr.Blocks</code> lets you place components and wire events yourself.</p></div>
 <p class="quiz-score"></p></section>
 
 <section class="exercise" style="--wire:var(--w2)"><h2>Exercise: an assistant for something you know</h2>
-<p>Build a FlightAI-style assistant for a domain you work in, with two tools backed by SQLite: one to look something up and one to change something. Make the change tool ask for confirmation first by returning "Confirm: …" for the model to relay, and only apply it on a second call that includes <code>confirmed=true</code>. Log every tool call to the console so you can watch the loop.</p>
+<p>Build a FlightAI-style assistant for a domain you work in, with two SQLite-backed tools: one to look something up and one to change something. Make the change tool ask for confirmation first by returning "Confirm: …" for the model to relay, and only apply the change on a second call with <code>confirmed=true</code>. Log every tool call to the console so you can watch the loop.</p>
 </section>
 
-<h2>Read the originals</h2>
+<h2>References</h2>
 <ul class="sources">
-  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week2">week2/</a> — the notebooks</li>
   <li><a href="https://www.gradio.app/guides/quickstart">Gradio quickstart</a></li>
   <li><a href="https://platform.openai.com/docs/guides/function-calling">Function calling guide</a> — OpenAI</li>
   <li><a href="https://docs.litellm.ai/">LiteLLM documentation</a></li>
+  <li><a href="https://github.com/ed-donner/llm_engineering/tree/main/week2">Week 2 reference implementation</a> — ed-donner/llm_engineering</li>
 </ul>
 <div class="mod-foot"></div>
 </section>

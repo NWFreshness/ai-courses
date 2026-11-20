@@ -1,0 +1,194 @@
+
+<section class="module" id="m1" data-title="What makes an agent" data-wire="var(--w1)" data-group="Week 1: Foundations">
+<div class="wire-band" style="--wire:var(--w1)"></div>
+<header class="mod-head">
+  <p class="mod-num">Week 1 · Module 1 of 9</p>
+  <h1>What makes something an agent</h1>
+  <p class="lede">"Agent" gets attached to almost anything with a model in it. This module gives you a sharper definition, five workflow patterns that solve most problems before you need an agent at all, and a first project that uses two of them: a panel of models answering one question, ranked by a model acting as judge.</p>
+</header>
+
+<div class="objectives" style="--wire:var(--w1)">
+  <h2>By the end of this module you can</h2>
+  <ul>
+    <li>Tell a workflow from an agent, and say where a system sits between them.</li>
+    <li>Recognize and sketch the five common workflow patterns.</li>
+    <li>Call several providers through one client shape and compare their answers.</li>
+    <li>Use one model as a judge of others, with structured output you can parse.</li>
+  </ul>
+</div>
+
+<div class="build" style="--wire:var(--w1)">
+  <h2>Project: a model panel with a judge</h2>
+  <ol>
+    <li>Ask one model to write a hard, open-ended question with a short answer.</li>
+    <li>Send that question to four or more models from different providers (OpenRouter makes this one key), plus a local model through Ollama if you have one.</li>
+    <li>Collect the answers and give them, numbered, to a judge model that returns a JSON ranking.</li>
+    <li>Print the ranking with each model's name, and run it three times to see how stable the judge is.</li>
+  </ol>
+  <p class="cost">Cost: a few cents per run with small and mid-sized models.</p>
+</div>
+
+<h2>A working definition</h2>
+<p>A useful definition, from Anthropic's guide to building effective agents, splits systems into two kinds. <strong>Workflows</strong> are systems where models and tools are orchestrated through code paths you wrote in advance. <strong>Agents</strong> are systems where the model directs its own process: it decides which tools to use, in what order, and when it's finished.</p>
+<p>In practice it's a spectrum of how much control you hand over. Most agentic systems you'll meet share a few traits: several model calls rather than one, models that can use tools, an environment the model can act on and observe, a planner (often the model itself) deciding what happens next, and some autonomy in how long it runs. The more of these a system has, the more it behaves like an agent, and the harder it is to predict.</p>
+
+<div class="note principle"><h4>Start simple</h4>
+<p>Use the least autonomy that solves the problem. A single well-prompted call beats a workflow when it's good enough; a workflow beats an agent when you can write the steps down. Reach for an agent when the path genuinely can't be known in advance, such as research, debugging or open-ended tasks in a browser, and accept that you're trading predictability and cost for flexibility.</p></div>
+
+<h2>Five workflow patterns</h2>
+<figure class="diagram">
+<svg viewBox="0 0 680 386" role="img" aria-label="Five workflow patterns. Prompt chaining: a sequence of model calls with a check in between. Routing: a classifier sends the input to one specialist. Parallelization: several calls run at once and an aggregator combines them. Orchestrator-workers: an orchestrator decides the subtasks, workers do them, and a synthesizer combines results. Evaluator-optimizer: a generator and an evaluator loop until the output passes.">
+  <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="var(--ink)"/></marker></defs>
+  <g style="font-size:12px">
+  <text x="10" y="38" style="font-weight:700;font-size:13px">Prompt chaining</text><text x="10" y="54" class="muted" style="font-size:11px">fixed steps, checks between</text>
+  <rect x="180" y="28" width="46" height="28" rx="5" class="box"/><text x="203" y="46" text-anchor="middle">In</text>
+  <rect x="252" y="28" width="66" height="28" rx="5" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="285" y="46" text-anchor="middle">LLM 1</text>
+  <rect x="344" y="28" width="56" height="28" rx="5" class="box" stroke-dasharray="4 3"/><text x="372" y="46" text-anchor="middle">check</text>
+  <rect x="426" y="28" width="66" height="28" rx="5" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="459" y="46" text-anchor="middle">LLM 2</text>
+  <rect x="518" y="28" width="46" height="28" rx="5" class="box"/><text x="541" y="46" text-anchor="middle">Out</text>
+  <path d="M226 42 H252" class="ln" marker-end="url(#a1)"/><path d="M318 42 H344" class="ln" marker-end="url(#a1)"/><path d="M400 42 H426" class="ln" marker-end="url(#a1)"/><path d="M492 42 H518" class="ln" marker-end="url(#a1)"/>
+
+  <text x="10" y="108" style="font-weight:700;font-size:13px">Routing</text><text x="10" y="124" class="muted" style="font-size:11px">classify, then specialize</text>
+  <rect x="180" y="98" width="46" height="28" rx="5" class="box"/><text x="203" y="116" text-anchor="middle">In</text>
+  <rect x="252" y="98" width="72" height="28" rx="5" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="288" y="116" text-anchor="middle">router</text>
+  <rect x="362" y="80" width="86" height="26" rx="5" class="box"/><text x="405" y="97" text-anchor="middle">billing LLM</text>
+  <rect x="362" y="118" width="86" height="26" rx="5" class="box"/><text x="405" y="135" text-anchor="middle">tech LLM</text>
+  <rect x="486" y="98" width="46" height="28" rx="5" class="box"/><text x="509" y="116" text-anchor="middle">Out</text>
+  <path d="M226 112 H252 M324 112 C342 112 344 93 362 93 M324 112 C342 112 344 131 362 131 M448 93 C468 93 466 112 486 112 M448 131 C468 131 466 112 486 112" class="ln"/>
+
+  <text x="10" y="186" style="font-weight:700;font-size:13px">Parallelization</text><text x="10" y="202" class="muted" style="font-size:11px">split or vote, then combine</text>
+  <rect x="180" y="176" width="46" height="28" rx="5" class="box"/><text x="203" y="194" text-anchor="middle">In</text>
+  <rect x="268" y="156" width="66" height="22" rx="5" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="301" y="171" text-anchor="middle">LLM</text>
+  <rect x="268" y="180" width="66" height="22" rx="5" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="301" y="195" text-anchor="middle">LLM</text>
+  <rect x="268" y="204" width="66" height="22" rx="5" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="301" y="219" text-anchor="middle">LLM</text>
+  <rect x="380" y="176" width="88" height="28" rx="5" class="box"/><text x="424" y="194" text-anchor="middle">aggregate</text>
+  <rect x="496" y="176" width="46" height="28" rx="5" class="box"/><text x="519" y="194" text-anchor="middle">Out</text>
+  <path d="M226 190 C248 190 248 167 268 167 M226 190 H268 M226 190 C248 190 248 215 268 215 M334 167 C358 167 358 190 380 190 M334 191 H380 M334 215 C358 215 358 190 380 190 M468 190 H496" class="ln"/>
+
+  <text x="10" y="264" style="font-weight:700;font-size:13px">Orchestrator-workers</text><text x="10" y="280" class="muted" style="font-size:11px">subtasks decided at run time</text>
+  <rect x="180" y="254" width="46" height="28" rx="5" class="box"/><text x="203" y="272" text-anchor="middle">In</text>
+  <rect x="252" y="254" width="92" height="28" rx="5" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="298" y="272" text-anchor="middle">orchestrator</text>
+  <rect x="380" y="238" width="70" height="24" rx="5" class="box" stroke-dasharray="4 3"/><text x="415" y="254" text-anchor="middle">worker</text>
+  <rect x="380" y="274" width="70" height="24" rx="5" class="box" stroke-dasharray="4 3"/><text x="415" y="290" text-anchor="middle">worker…</text>
+  <rect x="484" y="254" width="90" height="28" rx="5" class="box"/><text x="529" y="272" text-anchor="middle">synthesize</text>
+  <rect x="600" y="254" width="46" height="28" rx="5" class="box"/><text x="623" y="272" text-anchor="middle">Out</text>
+  <path d="M226 268 H252 M344 268 C362 268 362 250 380 250 M344 268 C362 268 362 286 380 286 M450 250 C468 250 466 268 484 268 M450 286 C468 286 466 268 484 268 M574 268 H600" class="ln"/>
+
+  <text x="10" y="338" style="font-weight:700;font-size:13px">Evaluator-optimizer</text><text x="10" y="354" class="muted" style="font-size:11px">revise until it passes</text>
+  <rect x="180" y="328" width="46" height="28" rx="5" class="box"/><text x="203" y="346" text-anchor="middle">In</text>
+  <rect x="252" y="328" width="88" height="28" rx="5" fill="color-mix(in srgb,var(--w1) 18%,var(--paper))" stroke="var(--w1)" stroke-width="2"/><text x="296" y="346" text-anchor="middle">generator</text>
+  <rect x="410" y="328" width="88" height="28" rx="5" fill="color-mix(in srgb,var(--w2) 18%,var(--paper))" stroke="var(--w2)" stroke-width="2"/><text x="454" y="346" text-anchor="middle">evaluator</text>
+  <rect x="540" y="328" width="46" height="28" rx="5" class="box"/><text x="563" y="346" text-anchor="middle">Out</text>
+  <path d="M226 342 H252" class="ln" marker-end="url(#a1)"/><path d="M340 336 H410" class="ln" marker-end="url(#a1)"/><path d="M498 342 H540" class="ln" marker-end="url(#a1)"/>
+  <path d="M410 350 C380 368 370 368 340 350" class="ln" marker-end="url(#a1)"/>
+  <text x="375" y="326" text-anchor="middle" class="muted" style="font-size:10px">draft</text>
+  <text x="375" y="380" text-anchor="middle" class="muted" style="font-size:10px">feedback</text>
+  </g>
+  <path id="p1chain" d="M203 42 H541" fill="none"/>
+  <g class="live"><circle r="5" fill="var(--w1)" stroke="var(--paper)" stroke-width="2"><animateMotion dur="3.5s" repeatCount="indefinite"><mpath href="#p1chain"/></animateMotion></circle></g>
+</svg>
+<figcaption>Five ways to combine model calls in code. Blue boxes are model calls; dashed boxes are decided at run time or are checks you write.</figcaption>
+</figure>
+
+<div class="tbl"><table>
+<thead><tr><th>Pattern</th><th>Use it when</th><th>Example</th></tr></thead>
+<tbody>
+<tr><td>Prompt chaining</td><td>The task splits into fixed steps and you want to check between them</td><td>Outline, check the outline covers the brief, then write</td></tr>
+<tr><td>Routing</td><td>Inputs fall into distinct kinds that each deserve their own prompt or model</td><td>Send easy questions to a small model, hard ones to a large one</td></tr>
+<tr><td>Parallelization</td><td>Independent parts can run at once (sectioning), or you want several attempts to compare (voting)</td><td>Three reviewers each check one aspect of a contract</td></tr>
+<tr><td>Orchestrator-workers</td><td>You can't know the subtasks until you see the input</td><td>Decide which files a change touches, then edit each</td></tr>
+<tr><td>Evaluator-optimizer</td><td>You have clear criteria, and feedback measurably improves results</td><td>Translate, critique, revise until the critic passes it</td></tr>
+</tbody></table></div>
+<p>An <strong>agent</strong> is what you get when the orchestrator stops being a fixed plan and becomes a loop: the model chooses an action, sees the result, and chooses again until it decides it's done. That loop is Module 2.</p>
+
+<h2>What autonomy costs</h2>
+<p>Handing control to the model brings three risks: an unpredictable path (you don't know which steps it'll take), unpredictable output (you can't fully specify what comes back), and unpredictable cost (a loop can run far longer than you expected). The answers are the same ones you'll practice all course: watch every run with tracing or logs, put limits on turns and spending, and add checks, called guardrails, that catch bad inputs and outputs before they matter.</p>
+
+<h2>Many models through one shape</h2>
+<p>Most providers offer an endpoint compatible with OpenAI's Chat Completions API, so one client class reaches them all; only the base URL, key and model name change. OpenRouter goes further and serves hundreds of models from many providers behind one key.</p>
+<figure class="code"><figcaption>panel.py, part 1: one question, many answers</figcaption><pre><code class="hl-py">import os, json
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+openai = OpenAI()
+openrouter = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY"))
+ollama = OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")
+
+def ask(client, model: str, prompt: str) -> str:
+    response = client.chat.completions.create(model=model, messages=[{"role": "user", "content": prompt}])
+    return response.choices[0].message.content
+
+question = ask(openai, "gpt-5.4-mini",
+    "Write one challenging, nuanced question with a succinct answer that tests reasoning, "
+    "not a math puzzle. Reply with the question only.")
+
+panel = [
+    (openai, "gpt-5.4-mini"),
+    (openrouter, "anthropic/claude-sonnet-4.5"),
+    (openrouter, "deepseek/deepseek-chat"),
+    (openrouter, "moonshotai/kimi-k2.6"),
+    (ollama, "llama3.2"),            # remove if you don't run Ollama
+]
+answers = [ask(client, model, question) for client, model in panel]</code></pre></figure>
+<p>Model names change often; check each provider's model list and substitute current ones. Calling them in a loop is fine here. Make it faster later with <code>AsyncOpenAI</code> and <code>asyncio.gather</code>, as in Module 0.</p>
+
+<h2>A model as judge</h2>
+<p>Comparing five long answers by eye is slow. Give them, numbered, to a capable model with clear criteria and ask for a ranking in a fixed JSON shape. Hide which model wrote which answer so the judge can't favor a name, and ask for JSON explicitly so you can parse it.</p>
+<figure class="code"><figcaption>panel.py, part 2: the judge</figcaption><pre><code class="hl-py">numbered = "\n\n".join(f"# Response from competitor {i + 1}\n\n{a}" for i, a in enumerate(answers))
+judge_prompt = f"""You are judging a competition between {len(answers)} competitors.
+Each was given this question:
+
+{question}
+
+Rank the responses for clarity and strength of argument, best first.
+Reply with JSON only, in this format: {{"results": [3, 1, 2]}}, using competitor numbers.
+
+{numbered}"""
+
+response = openai.chat.completions.create(
+    model="gpt-5.5", messages=[{"role": "user", "content": judge_prompt}],
+    response_format={"type": "json_object"})
+ranking = json.loads(response.choices[0].message.content)["results"]
+
+for place, number in enumerate(ranking, start=1):
+    print(f"{place}. {panel[number - 1][1]}")</code></pre></figure>
+<p>Which patterns did that use? Sending one task to several models at once is <strong>parallelization</strong> (voting). Using a separate model to grade output is the evaluator half of <strong>evaluator-optimizer</strong>. Feed the judge's critique back to the losing models and ask them to improve, and you'd have the whole loop.</p>
+
+<div class="note field"><h4>Judges have biases too</h4>
+<p>Model judges tend to favor longer answers, the first answer they read, and answers in their own style. Shuffle the order between runs, keep criteria specific, and spot-check a sample of rulings yourself before you trust a judge in production.</p></div>
+
+<div class="note pitfall"><h4>Parsing free text</h4>
+<p>"Here is my ranking: 3, then 1…" breaks <code>json.loads</code>. Ask for JSON only, use the provider's JSON or structured-output mode where it exists, and still wrap the parse in a <code>try</code> that retries once with the error message included. From Week 2, frameworks validate structured output against a Pydantic model for you.</p></div>
+
+<div class="takeaways"><h2>Takeaways</h2><ul>
+  <li>Workflows follow paths you wrote; agents choose their own path. Most real systems mix both.</li>
+  <li>Five patterns cover most needs: chaining, routing, parallelization, orchestrator-workers and evaluator-optimizer.</li>
+  <li>More autonomy means less predictable paths, outputs and costs, so observe, limit and check.</li>
+  <li>One client shape reaches most providers; a model judge with structured output turns comparisons into data.</li>
+</ul></div>
+
+<section class="quiz"><h2>Check your understanding</h2>
+<div class="q" data-correct="2"><p class="q-prompt">A support system classifies each ticket as billing, technical or other, then sends it to a prompt written for that kind. Which pattern is that?</p>
+<ol><li><button>Prompt chaining</button></li><li><button>Orchestrator-workers</button></li><li><button>Routing</button></li><li><button>An autonomous agent</button></li></ol>
+<p class="q-why">A classifier choosing one of several fixed paths is routing. The paths were written in advance, so it's a workflow.</p></div>
+<div class="q" data-correct="0"><p class="q-prompt">What most distinguishes an agent from an orchestrator-workers workflow?</p>
+<ol><li><button>The model decides, step by step, what to do next and when it's finished</button></li><li><button>It uses more than one model</button></li><li><button>It runs in the cloud</button></li><li><button>It uses tools</button></li></ol>
+<p class="q-why">Workflows can use many models and tools; the defining difference is who controls the sequence of steps.</p></div>
+<div class="q" data-correct="3"><p class="q-prompt">Why give the judge numbered answers without model names?</p>
+<ol><li><button>Names use too many tokens</button></li><li><button>The API rejects model names in prompts</button></li><li><button>It makes the JSON shorter</button></li><li><button>So the judge rates the answers rather than the reputations behind them</button></li></ol>
+<p class="q-why">Blind judging removes one source of bias. Shuffling the order between runs removes another.</p></div>
+<p class="quiz-score"></p></section>
+
+<section class="exercise" style="--wire:var(--w1)"><h2>Exercise: close the loop</h2>
+<p>Turn the panel into a full evaluator-optimizer. Ask the judge for a one-line critique of each answer as well as the ranking, then send each critique back to the model that wrote the answer, asking for a revision. Judge the revised answers. Did the rankings change, and did the worst answer improve the most? Then add routing: send short factual questions to the cheapest model only, and long open-ended ones to the full panel.</p>
+</section>
+
+<h2>References</h2>
+<ul class="sources">
+  <li><a href="https://www.anthropic.com/engineering/building-effective-agents">Building effective agents</a> — Anthropic</li>
+  <li><a href="https://openrouter.ai/models">OpenRouter model list</a></li>
+  <li><a href="https://github.com/ed-donner/agents/tree/main/1_foundations">Week 1 reference implementation</a> — ed-donner/agents</li>
+</ul>
+<div class="mod-foot"></div>
+</section>
