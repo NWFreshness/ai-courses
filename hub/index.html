@@ -7,6 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Courses">
 <title>Field courses</title>
+<link rel="icon" href="data:,">
 <meta name="description" content="Self-contained courses on AI engineering.">
 <style>
 :root{--paper:#EDF0F2;--surface:#F8F9FA;--ink:#18212B;--muted:#56616C;--rule:#C7CED5;--link:#245BA8;
@@ -40,6 +41,16 @@ h1{font-family:var(--display);font-weight:700;font-size:clamp(2.5rem,7vw,4rem);l
 footer{margin-top:3rem;font-family:var(--display);color:var(--muted);font-size:.93rem;display:flex;gap:1rem;flex-wrap:wrap;align-items:center}
 button{font-family:var(--display);font-size:.92rem;border:1.5px solid var(--ink);background:transparent;color:var(--ink);padding:.45rem .8rem;border-radius:4px;cursor:pointer;min-height:40px}
 @media (hover:hover){button:hover{background:var(--ink);color:var(--paper)}}
+.review{display:grid;grid-template-columns:auto 1fr;gap:.2rem 1.1rem;align-items:baseline;text-decoration:none;margin:0 0 1.6rem;padding:1rem 1.3rem;
+  border:1.5px solid var(--ink);border-radius:6px;background:var(--surface);transition:transform .2s}
+.review:hover{transform:translateX(4px)}
+.rv-t{font-family:var(--display);font-weight:700;font-size:1.45rem}
+.rv-s{font-family:var(--display);color:var(--muted)}
+.rv-s b{color:var(--ink)}
+.review.due{background:var(--ink);color:var(--paper)}
+.review.due .rv-s,.review.due .rv-s b{color:var(--paper)}
+@media (max-width:640px){.review{grid-template-columns:1fr}}
+footer a{color:var(--muted)}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .course{animation:rise .5s cubic-bezier(.2,.7,.2,1) both;animation-delay:calc(var(--n,0) * 90ms + 100ms)}
 @media (max-width:640px){.course a{grid-template-columns:1fr;gap:.9rem}.motif{max-width:9rem}}
@@ -52,8 +63,9 @@ button{font-family:var(--display);font-size:.92rem;border:1.5px solid var(--ink)
   <h1>Field courses</h1>
   <p class="lede">Self-contained courses on AI engineering. Each one works offline, on a phone, and remembers your progress in this browser.</p>
 </header>
+<a class="review" href="review/"><span class="rv-t">Review</span><span class="rv-s" id="rv-s">Recall cards and mixed quizzes from every course you've started.</span><span class="rv-go" aria-hidden="true"></span></a>
 <ol class="shelf">{{CARDS}}</ol>
-<footer><span>Built from the <code>courses/</code> folder of this repo.</span><button type="button" id="theme">Switch to dark</button></footer>
+<footer><span>Built from the <code>courses/</code> folder of this repo.</span><a href="review/#move">Move progress to another device</a><button type="button" id="theme">Switch to dark</button></footer>
 </div>
 <script>
 (function(){
@@ -75,6 +87,19 @@ button{font-family:var(--display);font-size:.92rem;border:1.5px solid var(--ink)
       if (last && c.titles[last]) a.href = c.slug + '/#' + last;
     } else st.textContent = 'Not started';
   });
+  // what the Review page has waiting
+  (function(){
+    var st=null; try { st=JSON.parse(localStorage.getItem('review:v1')); } catch(e){}
+    st = st || {}; var cards=st.cards||{}, added=st.added||{}, d=new Date(), now=Math.floor((d.getTime()-d.getTimezoneOffset()*60000)/86400000);
+    var due=Object.keys(cards).filter(function(id){ return cards[id].d<=now; }).length, fresh=0, studied={};
+    Object.keys(cards).forEach(function(id){ var k=id.split(':').slice(0,2).join(':'); studied[k]=(studied[k]||0)+1; });
+    courses.forEach(function(c){ var done=get(c.storage,'done')||{};
+      Object.keys(c.cards).forEach(function(m){ if (done[m] || (added[c.slug]&&added[c.slug][m])) fresh+=Math.max(0, c.cards[m]-(studied[c.slug+':'+m]||0)); }); });
+    var pace=st.pace||10, used=(st.newDay&&st.newDay.day===now)?st.newDay.n:0; fresh=Math.min(fresh, Math.max(0,pace-used));
+    var el=document.getElementById('rv-s'), n=due+fresh;
+    if (n){ el.innerHTML='<b>'+n+' card'+(n===1?'':'s')+'</b> waiting today'+(fresh&&due?' ('+fresh+' new)':fresh?', all new':'')+'. About '+Math.max(1,Math.round(n*12/60))+' minute'+(Math.round(n*12/60)>1?'s':'')+'.'; el.parentNode.classList.add('due'); }
+    else if (Object.keys(cards).length) el.textContent='Nothing due today. Take a mixed quiz, or come back tomorrow.';
+  })();
   var btn=document.getElementById('theme'), saved=null;
   try { saved = localStorage.getItem('hub:theme'); } catch(e){}
   function set(t){ document.documentElement.dataset.theme=t; btn.textContent = t==='dark'?'Switch to light':'Switch to dark'; }

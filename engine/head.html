@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="{{SHORT}}">
 <script>document.documentElement.className="js";</script>
 <title>{{TITLE}}: {{KIND}}</title>
+<link rel="icon" href="data:,">
 <meta name="description" content="{{SUBTITLE}}">
 <style>
 :root{
@@ -329,6 +330,27 @@ pre.wrap{white-space:pre-wrap;word-break:break-word}
 .hub-link{display:inline-block;font-size:.86rem;color:var(--muted);text-decoration:none;margin-bottom:.55rem}
 .hub-link::before{content:"‹ "}
 .hub-link:hover{color:var(--ink);text-decoration:underline}
+.brand .hub-links{display:flex;gap:1.1rem;margin:0;color:inherit;font-size:inherit}
+.hub-link.rv::before{content:none}
+.brand #duecount{display:inline;margin:0;font-size:inherit;color:var(--ink);font-weight:600}
+
+/* mixed review checkpoints */
+.mixed-review{margin:2.8rem 0 2rem;padding-top:1.1rem;border-top:3px solid var(--ink)}
+.mixed-review>h2{margin:0 0 .35rem}
+.mx-strip{display:flex;gap:3px;margin:.2rem 0 .9rem;max-width:30rem}
+.mx-strip i{flex:1;height:7px;border-radius:2px;background:var(--c)}
+.mx-strip i.stripe{background:repeating-linear-gradient(45deg,var(--w8) 0 4px,var(--w8b) 4px 8px)}
+.mx-q{border-left:5px solid var(--rule);transition:border-color .45s ease}
+.mx-q.mx-done{border-left-color:var(--src,var(--ink))}
+.mx-num{margin:0 0 .3rem;font-family:var(--display);font-size:.85rem;color:var(--muted)}
+.mx-src{display:flex;align-items:center;gap:.45rem;margin-top:.6rem;font-family:var(--display);font-size:.93rem}
+.mx-src::before{content:"";width:.8rem;height:.8rem;border-radius:2px;background:var(--src,var(--ink));flex:none}
+.mx-foot{display:flex;flex-wrap:wrap;gap:.8rem 1.2rem;align-items:center;justify-content:space-between;margin:.4rem 0 .6rem}
+.mx-score{font-family:var(--display);color:var(--muted)}
+.mx-again{font-family:var(--display);font-size:.95rem;border:1.5px solid var(--ink);background:transparent;color:var(--ink);padding:.5rem .9rem;border-radius:4px;cursor:pointer;min-height:44px}
+@media (hover:hover){.mx-again:hover{background:var(--ink);color:var(--paper)}}
+.mx-more,.deck-note{font-size:.95rem;color:var(--muted)}
+.deck-note{margin:1.6rem 0 .4rem;padding-left:.8rem;border-left:3px solid var(--rule)}
 /* ---------- hands-on simulators ---------- */
 .sim{--wire:inherit;border:1.5px solid var(--wire,var(--ink));border-radius:8px;background:var(--surface);margin:2rem 0;overflow:hidden}
 .sim:not(:has(.sim-body)){padding:1rem 1.2rem}
@@ -412,7 +434,7 @@ pre.wrap{white-space:pre-wrap;word-break:break-word}
 <a class="skip" href="#content">Skip to content</a>
 <div class="app">
 <nav class="loom" id="nav" aria-label="Course modules">
-  <div class="brand"><a class="hub-link" href="../">All courses</a><b>{{TITLE}}</b><span>{{SUBTITLE}}</span>
+  <div class="brand"><span class="hub-links"><a class="hub-link" href="../">All courses</a><a class="hub-link rv" href="../review/">Review<span id="duecount"></span></a></span><b>{{TITLE}}</b><span>{{SUBTITLE}}</span>
     <div class="progress" aria-hidden="true"><i id="progbar"></i></div>
     <p class="progress-label" id="proglabel"></p>
   </div>

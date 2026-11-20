@@ -80,6 +80,50 @@
   }
   window.addEventListener('hashchange', show);
 
+  // question bank: every module quiz on this page, for the mixed reviews and the Review page's log
+  var bank = [];
+  core.forEach(function(m){
+    m.querySelectorAll('.quiz .q').forEach(function(q, i){
+      q.dataset.qid = m.id + ':' + i;
+      bank.push({ id: q.dataset.qid, mid: m.id, title: m.dataset.title, color: m.dataset.wire,
+        p: q.querySelector('.q-prompt').innerHTML, k: parseInt(q.dataset.correct, 10), w: q.querySelector('.q-why').innerHTML,
+        o: Array.prototype.map.call(q.querySelectorAll('ol button'), function(b){ return b.innerHTML; }) });
+    });
+  });
+  function logResult(id, ok){ if (!window.Mixed) return; store.set('qlog', Mixed.record(store.get('qlog') || {}, id, ok)); }
+  function modLabel(mid, title){ return /^Week \d/.test(title) ? title : 'Module ' + mid.slice(1) + ': ' + title; }
+
+  // mixed review checkpoints at the end of each section
+  document.querySelectorAll('.mixed-review').forEach(function(sec){
+    if (!window.Mixed) return;
+    var upto = core.map(function(m){ return m.id; }).indexOf(sec.dataset.upto), allowed = {};
+    core.slice(0, upto + 1).forEach(function(m){ allowed[m.id] = 1; });
+    var pool = bank.filter(function(q){ return allowed[q.mid]; });
+    var box = sec.querySelector('.mx-box'), score = sec.querySelector('.mx-score'), again = sec.querySelector('.mx-again');
+    function deal(){
+      var log = store.get('qlog') || {};
+      score.textContent = '';
+      Mixed.render(box, Mixed.pick(pool, 6, function(q){ return log[q.id]; }), {
+        source: function(q){ return 'From <a href="#' + q.mid + '">' + modLabel(q.mid, q.title) + '</a>'; },
+        onAnswer: function(q, ok, right, answered, total){
+          logResult(q.id, ok);
+          score.textContent = right + ' of ' + answered + ' correct' + (answered < total ? ' so far' : '. Questions you miss come back more often in the next set.');
+        }
+      });
+    }
+    deal();
+    again.addEventListener('click', function(){ deal(); var f = box.querySelector('button'); if (f) f.focus(); });
+  });
+
+  // the Review link shows how many recall cards are due, across every course
+  (function(){
+    var el = document.getElementById('duecount'); if (!el || !window.Mixed) return;
+    var st = null; try { st = JSON.parse(localStorage.getItem('review:v1')); } catch(e){}
+    var now = Mixed.today(), n = 0;
+    if (st && st.cards) Object.keys(st.cards).forEach(function(id){ if (st.cards[id].d <= now) n++; });
+    if (n) el.textContent = ' (' + n + ' due)';
+  })();
+
   // quizzes
   document.querySelectorAll('.quiz').forEach(function(qz){
     var qs = qz.querySelectorAll('.q'), score = qz.querySelector('.quiz-score');
@@ -101,6 +145,7 @@
           btns.forEach(function(x){ x.setAttribute('aria-disabled','true'); });
           why.insertAdjacentHTML('afterbegin','<b>'+(ok?'Correct. ':'Not quite. ')+'</b>');
           why.classList.add('shown'); tally();
+          if (q.dataset.qid) logResult(q.dataset.qid, ok);
         });
       });
     });

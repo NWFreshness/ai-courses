@@ -279,6 +279,102 @@ def insert_kits(body, slug, folder):
     return body
 
 
+# ---------------------------------------------------------------- retention: recall cards and mixed reviews
+# courses/<slug>/cards.md holds recall cards for the Review page's spaced-repetition deck:
+#   === m3
+#   Q: question       (backticks become <code>)
+#   A: answer
+import hashlib
+
+
+def inline_md(s):
+    s = htmlmod.escape(s.strip(), quote=False)
+    return re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+
+
+def parse_cards(slug, folder):
+    path = folder / "cards.md"
+    if not path.exists():
+        return []
+    cards, mid, q = [], None, None
+    for line in path.read_text().splitlines():
+        if line.startswith("=== "):
+            mid = line[4:].strip()
+        elif line.startswith("Q: "):
+            q = line[3:]
+        elif line.startswith("A: ") and q is not None:
+            cid = f"{slug}:{mid}:" + hashlib.sha1(q.strip().encode()).hexdigest()[:8]
+            cards.append({"id": cid, "c": slug, "m": mid, "q": inline_md(q), "a": inline_md(line[3:])})
+            q = None
+    ids = [c["id"] for c in cards]
+    assert len(ids) == len(set(ids)), f"{slug}: duplicate card"
+    return cards
+
+
+def module_sections(body):
+    """(id, title, wire, group, start, end, has_quiz) for each core module, in page order."""
+    heads = list(re.finditer(r'<section class="module" id="([^"]+)" data-title="([^"]+)" data-wire="([^"]+)"([^>]*)>', body))
+    out = []
+    for i, m in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(body)
+        if not re.match(r"m\d+$", m.group(1)):
+            continue
+        grp = re.search(r'data-group="([^"]+)"', m.group(4)).group(1)
+        wire = "stripe" if "data-stripe" in m.group(4) else m.group(3)
+        out.append((m.group(1), m.group(2), wire, grp, m.start(), end, 'class="quiz"' in body[m.start():end]))
+    return out
+
+
+def insert_retention(body, slug, cards):
+    """Before each module's footer: a note about its recall cards, and at the end of each section
+    a mixed review drawn from every module so far (when at least two new quizzes have arrived since the last one)."""
+    mods = module_sections(body)
+    counts = {}
+    for c in cards:
+        counts[c["m"]] = counts.get(c["m"], 0) + 1
+    since, seen, inserts = 0, [], []
+    for i, (mid, title, wire, grp, start, end, quiz) in enumerate(mods):
+        seen.append((mid, wire))
+        since += quiz
+        block = ""
+        last_in_group = i + 1 == len(mods) or mods[i + 1][3] != grp
+        if last_in_group and since >= 2 and sum(1 for m in mods[:i + 1] if m[6]) >= 3:
+            strip = "".join(f'<i class="stripe" title="Module {m[1:]}"></i>' if w == "stripe" else
+                            f'<i style="--c:{w}" title="Module {m[1:]}"></i>' for m, w in seen)
+            first = mods[0][0][1:]
+            block += (f'<section class="mixed-review" data-upto="{mid}" aria-labelledby="mx-{mid}">'
+                      f'<h2 id="mx-{mid}">Mixed review</h2>'
+                      f'<div class="mx-strip" aria-hidden="true">{strip}</div>'
+                      f'<p>Six questions from Modules {first} to {mid[1:]}, shuffled together and weighted toward the ones you missed before. '
+                      f'You won\'t know which module a question comes from until you answer it.</p>'
+                      f'<div class="mx-box"></div>'
+                      f'<p class="mx-foot"><span class="mx-score" aria-live="polite"></span><button type="button" class="mx-again">Deal a new set</button></p>'
+                      f'</section>\n')
+            since = 0
+        if counts.get(mid):
+            block += (f'<p class="deck-note">Marking this module complete adds its {counts[mid]} recall cards to your '
+                      f'<a href="../review/">review deck</a>, which brings each one back just as you\'re about to forget it.</p>\n')
+        if block:
+            foot = body.rfind('<div class="mod-foot">', start, end)
+            assert foot > 0, f"{slug} {mid}: no footer"
+            inserts.append((foot, block))
+    for at, block in sorted(inserts, reverse=True):
+        body = body[:at] + block + body[at:]
+    return body
+
+
+def quiz_bank(slug, body):
+    """Every module quiz question, for the Review page's mixed quiz."""
+    out = []
+    for mid, title, wire, grp, start, end, quiz in module_sections(body):
+        sec = body[start:end]
+        for i, q in enumerate(re.finditer(r'<div class="q" data-correct="(\d+)">(.*?)<p class="q-why">(.*?)</p></div>', sec, re.S)):
+            prompt = re.search(r'<p class="q-prompt">(.*?)</p>', q.group(2), re.S).group(1)
+            opts = re.findall(r'<button>(.*?)</button>', q.group(2), re.S)
+            out.append({"id": f"{mid}:{i}", "c": slug, "m": mid, "p": prompt, "o": opts, "k": int(q.group(1)), "w": q.group(3)})
+    return out
+
+
 # ---------------------------------------------------------------- page assembly
 attr_re = re.compile(r'\s(fill|stroke|stop-color)="((?:var|color-mix)\([^"]*\))"')
 
@@ -300,6 +396,9 @@ def build_course(folder):
     cfg = json.loads((folder / "course.json").read_text())
     body = "".join((folder / f).read_text() for f in sorted(p.name for p in folder.glob("m*.html")))
     body = insert_kits(body, cfg["slug"], folder)
+    cards = parse_cards(cfg["slug"], folder)
+    bank = quiz_bank(cfg["slug"], body)
+    body = insert_retention(body, cfg["slug"], cards)
     head = (ENGINE / "head.html").read_text()
     css = (folder / "course.css").read_text() if (folder / "course.css").exists() else ""
     public = {k: cfg[k] for k in ("slug", "title", "storage")}
@@ -307,7 +406,8 @@ def build_course(folder):
                  "{{SUBTITLE}}": cfg["subtitle"], "{{COURSE_CSS}}": css,
                  "{{COURSE_JSON}}": json.dumps(public)}.items():
         head = head.replace(k, v)
-    page = highlight(head + body + (ENGINE / "tail.html").read_text())
+    mixed = "<script>\n" + (ENGINE / "mixed.js").read_text() + "</script>\n"
+    page = highlight(head + body + mixed + (ENGINE / "tail.html").read_text())
     if (folder / "sims.js").exists():          # hands-on simulators: shared toolkit, then the course's own
         js = (ENGINE / "sims.js").read_text() + "\n" + (folder / "sims.js").read_text()
         page = page.replace("</body>", "<script>\n" + js + "\n</script>\n</body>", 1)
@@ -343,15 +443,17 @@ def build_course(folder):
     out.write_text(page)
     core = len([s for s in secs if re.match(r"m\d+$", s[0])])
     print(f"  {out.relative_to(ROOT)}  {len(page):,} bytes, {core} modules")
-    return cfg, core, [(s[0], s[1]) for s in secs if re.match(r"m\d+$", s[0])]
+    print(f"     {len(cards)} recall cards, {len(bank)} quiz questions, {page.count('class=\"mixed-review\"')} mixed reviews")
+    return cfg, core, [(s[0], s[1]) for s in secs if re.match(r"m\d+$", s[0])], cards, bank
 
 
 def build_hub(courses):
     tpl = (ROOT / "hub" / "index.html").read_text()
     data = [{"slug": c["slug"], "title": c["title"], "storage": c["storage"], "modules": n,
-             "titles": dict(titles)} for c, n, titles in courses]
+             "titles": dict(titles), "cards": {m: sum(1 for x in cards if x["m"] == m) for m, _ in titles}}
+            for c, n, titles, cards, bank in courses]
     cards = []
-    for c, n, _ in courses:
+    for c, n, *_ in courses:
         cards.append(f'<li class="course" data-slug="{c["slug"]}" style="--accent:{c["accent"]}">'
                      f'<a href="{c["slug"]}/"><span class="motif motif-{c["hero"]}" aria-hidden="true">{c["motif"]}</span>'
                      f'<span class="c-body"><b>{c["title"]}</b><span class="c-blurb">{c["blurb"]}</span>'
@@ -363,6 +465,22 @@ def build_hub(courses):
     print(f"  site/index.html  hub with {len(courses)} courses")
 
 
+def build_review(courses):
+    """site/review/: the spaced-repetition deck and a mixed quiz across every course."""
+    label = lambda mid, title: title if re.match(r"Week \d", title) else f"Module {mid[1:]}: {title}"
+    data = {"courses": [{"slug": c["slug"], "title": c["title"], "storage": c["storage"], "accent": c["accent"],
+                         "modules": [{"id": m, "label": label(m, t)} for m, t in titles]} for c, n, titles, cards, bank in courses],
+            "cards": [x for *_, cards, bank in courses for x in cards],
+            "quiz": [x for *_, cards, bank in courses for x in bank]}
+    page = (ROOT / "hub" / "review.html").read_text()
+    page = page.replace("{{MIXED_JS}}", (ENGINE / "mixed.js").read_text())
+    page = page.replace("{{DATA}}", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))
+    out = SITE / "review" / "index.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(page)
+    print(f"  site/review/index.html  {len(data['cards'])} cards, {len(data['quiz'])} quiz questions")
+
+
 if __name__ == "__main__":
     folders = sorted(p for p in (ROOT / "courses").iterdir() if (p / "course.json").exists())
     order = {"llm-engineering": 0, "agents": 1, "harness-engineering": 2, "ai-fde": 3}
@@ -370,3 +488,4 @@ if __name__ == "__main__":
     print("Building courses:")
     built = [build_course(f) for f in folders]
     build_hub(built)
+    build_review(built)

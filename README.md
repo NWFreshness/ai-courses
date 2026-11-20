@@ -13,6 +13,8 @@ Self-contained courses on AI engineering, published with GitHub Pages.
 
 Every course works on phones, saves progress in the browser, has a hands-on simulator and a "Build it with an agent" kit in every module, and has no external dependencies. The hub page shows progress across all of them.
 
+To help it stick, the [Review page](https://nwfreshness.github.io/ai-courses/review/) runs a spaced-repetition deck of recall cards (a module's cards join when you mark it complete) and a mixed quiz across every course. Each course also ends every section with a mixed review drawn from all earlier modules, weighted toward questions you've missed. Progress can be exported and imported to move it between devices.
+
 ## Layout
 
 ```
@@ -20,12 +22,15 @@ build.py                    builds everything into site/
 engine/head.html            shared page shell: CSS, sidebar, top bar
 engine/tail.html            shared scripts: navigation, quizzes, progress, animation
 engine/sims.js              toolkit for the hands-on simulators (sliders, toggles, logs, charts)
+engine/mixed.js             mixed-review quizzes, shared by the courses and the Review page
 hub/index.html              the course list
+hub/review.html             the Review page: spaced-repetition deck, mixed quiz, export/import
 courses/<slug>/course.json  title, colors, storage key, hero type, hub card
 courses/<slug>/course.css   optional course-specific styles
 courses/<slug>/m00.html …   the course's sections, in file-name order
 courses/<slug>/sims.js      optional: the course's simulators
 courses/<slug>/agent-kits.md optional: per-module briefs, review prompts and checklists for coding agents
+courses/<slug>/cards.md     optional: recall cards for the Review page, per module
 ```
 
 ## Working on it
@@ -45,7 +50,8 @@ Use a local server rather than opening the files directly, so links between cour
 4. Code samples can be written plain inside `<code class="hl-py">`, `hl-sh` or `hl-yaml`; the build adds syntax coloring.
 5. For a simulator, add `<div class="sim" data-sim="name" data-title="…" data-lede="…" style="--wire:var(--w3)"></div>` to a module and `Sim.register("name", function (body) { … })` to the course's `sims.js`.
 6. For agent kits, add an `agent-kits.md` with a `=== setup | …` section (intro, then `--- brief` holding the starter AGENTS.md) and one `=== m3 | What you build` section per module with `--- brief`, `--- review` and `--- check` (one `- item` per line). The build puts each kit before the module's takeaways.
-7. Run `python3 build.py` and push. The workflow in `.github/workflows/pages.yml` rebuilds and deploys on every push to `main`.
+7. For recall cards, add a `cards.md` with one `=== m3` line per module, then `Q:` and `A:` lines (backticks become code). A card's schedule is keyed by its question, so rewording one resets it. Module quizzes need no extra work: the build gathers them for the mixed reviews, which appear at the end of each `data-group` section once two new quizzes have arrived since the last one.
+8. Run `python3 build.py` and push. The workflow in `.github/workflows/pages.yml` rebuilds and deploys on every push to `main`.
 
 ## GitHub Pages setup (one time)
 
